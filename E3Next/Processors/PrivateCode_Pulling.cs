@@ -16,6 +16,7 @@ namespace E3Core.Processors
         static ElapsedTimer myTimer = new ElapsedTimer();
         static ElapsedTimer CampUpdateTimer = new ElapsedTimer();
         static int EngagedID;
+        static int ZoneID;
         // Call out target if its close 
         public static void Startup()
         {
