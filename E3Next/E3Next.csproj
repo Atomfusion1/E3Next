@@ -119,6 +119,11 @@
     <Compile Include="Processors\Movement.cs" />
     <Compile Include="Processors\Nukes.cs" />
     <Compile Include="Processors\PrivateCode.cs" />
+    <Compile Include="Processors\PrivateCode_Commands.cs" />
+    <Compile Include="Processors\PrivateCode_Events.cs" />
+    <Compile Include="Processors\PrivateCode_Follow.cs" />
+    <Compile Include="Processors\PrivateCode_Pulling.cs" />
+    <Compile Include="Processors\PrivateCode_Utility.cs" />
     <Compile Include="Processors\VetAAs.cs" />
     <Compile Include="Processors\Zoning.cs" />
     <Compile Include="Server\NetMQServer.cs" />
