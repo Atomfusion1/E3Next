@@ -318,7 +318,6 @@ namespace E3Core.Processors
                     } 
                 }
                 if (E3.CharacterSettings.Misc_DebugLogLevel > 0) E3.Bots.Broadcast("\agFinished looting area ");
-                E3.Bots.Broadcast("\agFinished looting area ");
                 MQ.Delay(300); // Wait for fading corpses to disappear
             }
         }
