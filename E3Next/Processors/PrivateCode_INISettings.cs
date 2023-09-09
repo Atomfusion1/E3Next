@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace E3Core.Processors
 {
-    internal class Private_INISettings
+    internal class PrivateCode_INISettings
     {
     }
 }
