@@ -20,7 +20,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
+    <OutputPath>..\..\..\macroquest\EQMQ\build\bin\release\mono\macros\e3\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -124,6 +124,7 @@
     <Compile Include="Processors\PrivateCode_Follow.cs" />
     <Compile Include="Processors\PrivateCode_Pulling.cs" />
     <Compile Include="Processors\PrivateCode_Utility.cs" />
+    <Compile Include="Processors\PrivateCode_INISettings.cs" />
     <Compile Include="Processors\VetAAs.cs" />
     <Compile Include="Processors\Zoning.cs" />
     <Compile Include="Server\NetMQServer.cs" />
