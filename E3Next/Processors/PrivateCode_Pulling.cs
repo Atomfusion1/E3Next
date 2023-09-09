@@ -40,6 +40,14 @@ namespace E3Core.Processors
         private static void Private_CallTarget()
         {
             if (E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance3D}}") > 120) return;
+            if (ZoneID != MQ.Query<int>($"${{Zone.ID}}"))
+            {
+                MQ.Write("\ar Zone Changed Detected Turning Off");
+                E3.MQ.Cmd("/lootoff");
+                PrivateCode.PullingMode = false;
+                PrivateCode.LazyMode = false;
+                return;
+            }
             if (E3.MQ.Query<Int32>($"${{Me.XTarget[1].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 120)
             {
                 if (E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}") != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 75)
@@ -244,6 +252,7 @@ namespace E3Core.Processors
                     {
                         PrivateCode.LazyMode = true;
                         PrivateCode.PullingMode = false;
+                        ZoneID = MQ.Query<int>($"${{Zone.ID}}");
                         E3.MQ.Cmd("/lootoff");
                         PrivateCode.GroupCampMember = x.args[1];
                         string ZoneName = MQ.Query<string>("${Zone.Name}");
@@ -274,6 +283,7 @@ namespace E3Core.Processors
                     {
                         PrivateCode.PullingMode = true;
                         PrivateCode.LazyMode = false;
+                        ZoneID = MQ.Query<int>($"${{Zone.ID}}");
                         E3.MQ.Cmd("/looton");
                         PrivateCode.GroupCampMember = x.args[1];
                         string ZoneName = MQ.Query<string>("${Zone.Name}");
