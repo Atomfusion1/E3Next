@@ -145,6 +145,7 @@ namespace E3Core.Processors
             IniParser.FileIniDataParser fileIniData = e3util.CreateIniParser();
             // Start List here on reload to clear it
             // Must pass ReadFile a complete Filename 
+            MobInformation.MobNameArray.Clear();
             string filename = BaseSettings.GetSettingsFilePath($"{FileName}");
             if (Debug) MQ.Write("Read File: " + FileName);
             if (Debug) MQ.Write(filename);
