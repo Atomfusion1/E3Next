@@ -63,10 +63,12 @@ namespace E3Core.Processors
                     {
                         if (targetid > 0)
                         {
+                            E3.Bots.Broadcast("\agNowCasting: \ay" + spell);
                             castResult = NowCastSpell(spell, targetid);
                         }
                         else
                         {
+                            E3.Bots.Broadcast("\agNowCasting: \ay" + spell);
                             castResult = NowCastSpell(spell, 0);
                         }
                     }
