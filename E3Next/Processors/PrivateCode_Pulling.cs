@@ -50,9 +50,9 @@ namespace E3Core.Processors
             }
             if (E3.MQ.Query<Int32>($"${{Me.XTarget[1].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 120)
             {
-                if (E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}") != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 75)
+                if (E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}") != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 120)
                 {
-                    MQ.Delay(1500);
+                    MQ.Delay(2000, "${Me.XTarget[1].Distance} < 20");
                     E3.MQ.Cmd(@"/target id " + E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}").ToString());
                     E3.MQ.Delay(50);
                     if (PrivateCode.PullingMode) E3.MQ.Cmd(@"/squelch /face fast nolook");
