@@ -69,6 +69,8 @@ namespace E3Core.Processors
         }
         // Check If HP are low then return if they are
         // Check if Stuck then using manual movement if so 
+        // if mob attacking member move to call and assist
+        // fix followoff tome= need to add ZoneID
 
         private static void Private_PullingTarget()
         {
