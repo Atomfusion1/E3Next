@@ -67,6 +67,9 @@ namespace E3Core.Processors
                 E3.MQ.Cmd(@"/Squelch /Attack off");
             }
         }
+        // Check If HP are low then return if they are
+        // Check if Stuck then using manual movement if so 
+
         private static void Private_PullingTarget()
         {
             // MQ.Delay(300, $"${{Target.ID}}=={targetID}");
