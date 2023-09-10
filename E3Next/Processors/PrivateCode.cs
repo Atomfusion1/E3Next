@@ -67,7 +67,7 @@ namespace E3Core.Processors
             CampOutTimer = new ElapsedTimer();
             LazyMode = false;
             PullingMode = false;
-            E3.GeneralSettings.Movement_NavStopDistance = 20; // Override Nav Stop Distance
+            //E3.GeneralSettings.Movement_NavStopDistance = 20; // Override Nav Stop Distance
             PrivateFollow.Startup();
             SuperMode.Startup();
             PrivateCommands.StartupCommands();
