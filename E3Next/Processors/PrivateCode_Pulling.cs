@@ -39,6 +39,7 @@ namespace E3Core.Processors
 
         private static void Private_CallTarget()
         {
+            int targetID = E3.MQ.Query<Int32>($"${{Me.XTarget[1].ID}}");
             if (E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance3D}}") > 120) return;
             if (ZoneID != MQ.Query<int>($"${{Zone.ID}}"))
             {
@@ -48,16 +49,16 @@ namespace E3Core.Processors
                 PrivateCode.LazyMode = false;
                 return;
             }
-            if (E3.MQ.Query<Int32>($"${{Me.XTarget[1].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 120)
+            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc {targetID}]}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 120)
             {
-                if (E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}") != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 75)
+                if (targetID != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 120)
                 {
-                    MQ.Delay(1500);
-                    E3.MQ.Cmd(@"/target id " + E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}").ToString());
+                    MQ.Delay(2000, "${Me.XTarget[1].Distance} < 20");
+                    E3.MQ.Cmd(@"/target id " + targetID.ToString());
                     E3.MQ.Delay(50);
                     if (PrivateCode.PullingMode) E3.MQ.Cmd(@"/squelch /face fast nolook");
                     E3.MQ.Cmd(@"/g Assist Me on %t");
-                    EngagedID = E3.MQ.Query<Int32>(@"${Target.ID}");
+                    EngagedID = targetID;
                     E3.MQ.Cmd(@"/assistme /all");
                 }
             }
