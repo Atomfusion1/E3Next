@@ -78,7 +78,7 @@ namespace E3Core.Processors
                     double distance = MQ.Query<double>($"${{Spawn[={_chaseTarget}].Distance}}");
                     double minDistanceToChase = E3.GeneralSettings.Movement_ChaseDistanceMin;
                     double maxDistanceToChase = E3.GeneralSettings.Movement_ChaseDistanceMax;
-                    
+                    int deadZone = 30;
 
                     if (distance != -1)
                     {
@@ -90,7 +90,7 @@ namespace E3Core.Processors
                             Int32 spawnID = MQ.Query<Int32>($"${{Spawn[={_chaseTarget}].ID}}");
                             Double navPathLength = MQ.Query<Double>($"${{Navigation.PathLength[id {spawnID}]}}");
 
-                            if (distance > minDistanceToChase && navPathLength < maxDistanceToChase)
+                            if (distance > minDistanceToChase && distance > deadZone && navPathLength < maxDistanceToChase)
                             {
                                 e3util.NavToSpawnID(spawnID);
                             }
@@ -98,6 +98,7 @@ namespace E3Core.Processors
                         }
                         else
                         {
+                            E3.Bots.Broadcast("No Nav Loaded Using Follow");
                             if (distance > minDistanceToChase && distance < 150 && InLoS)
                             {
                                 double x = MQ.Query<double>($"${{Spawn[={_chaseTarget}].X}}");
