@@ -49,7 +49,7 @@ namespace E3Core.Processors
                 PrivateCode.LazyMode = false;
                 return;
             }
-            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc {targetID}]}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 120)
+            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc id {targetID}].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 120)
             {
                 if (targetID != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 120)
                 {
