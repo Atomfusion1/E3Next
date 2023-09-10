@@ -361,7 +361,7 @@ namespace E3Core.Processors
                             // Inform the user that no movement was detected
                             if (i == attempts)
                             {
-                                E3.Bots.Broadcast("\arI Failed to Zone");
+                                E3.Bots.Broadcast("\arI Failed To Zone");
                                 MQ.Write("\arZone FAILED");
                             }
                         }
@@ -369,6 +369,7 @@ namespace E3Core.Processors
                     }
                     else
                     {
+                        E3.Bots.Broadcast("\arI Failed to Zone To Far From Door");
                         MQ.Write("\arMove Closer To Door");
                     }
                 }
