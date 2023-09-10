@@ -29,7 +29,7 @@ namespace E3Core.Processors
         private static void RegisterEventsEXPGain()
         {
             List<String> r = new List<string>();
-            r.Add(@"^You have gained (raid|group|party) experience! \(((\d+\.\d+%)|(\d+\.\d+%AA))(, (\d+\.\d+%))?((, )?(\d+\.\d+%AA))?\)");
+            r.Add(@"^You have gained (raid|group|party)? ?experience! \(((\d+\.\d+%)|(\d+\.\d+%AA))(, (\d+\.\d+%))?((, )?(\d+\.\d+%AA))?\)");
 
             EventProcessor.RegisterEvent("MQ_EXP_RATE", r, (x) =>
             {
