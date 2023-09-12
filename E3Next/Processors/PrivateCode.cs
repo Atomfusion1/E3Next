@@ -61,7 +61,7 @@ namespace E3Core.Processors
         public static void Init()
         {
             Casting.VarsetValues.Add("TimeTillDeath", "10"); // Add TimeTillDeath and use in Ifs
-            MQ.Write("\agPrivate Code Version 1.2.3 Loaded ");
+            MQ.Write("\agPrivate Code Version 1.2.4 Loaded ");
             MQ.Cmd("/nav setopt dist=30 log=off");
             // Initialize Variables One Time
             CampOutTimer = new ElapsedTimer();
@@ -181,6 +181,7 @@ namespace E3Core.Processors
                 MQ.Write("File Not Found");
             }
         }
+
 
 
         // Not used yet will need to write INI 

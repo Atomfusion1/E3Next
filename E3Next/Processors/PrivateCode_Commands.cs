@@ -8,17 +8,23 @@ using E3Core.Data;
 using E3Core.Settings;
 using E3Core.Utility;
 using IniParser.Model;
+using System.Security.Cryptography;
+using System.IO;
+using System.Reflection;
+
 
 namespace E3Core.Processors
 {
     public static class PrivateCommands
     {
+
         public static void StartupCommands()
         {
             LoadCommandStartup();
             RegisterCommandCampOut();
             RegisterCommandMoveToTarget();
             RegisterCommandPrintINI();
+            //RegisterCommandE3NextHelp();
         }
         private static IMQ MQ = E3.MQ;
         private static void LoadCommandStartup() // Load in Variables from INI file then run command 
@@ -40,6 +46,59 @@ namespace E3Core.Processors
                 MQ.Write("\ar No, Command On Startup  in Save file");
             }
         }
+        public static void ListRegisteredCommands()
+        {
+            MQ.Write("Registered Commands:");
+            var sortedCommands = EventProcessor.CommandList.Keys.OrderBy(key => key).ToList();
+            foreach (var command in sortedCommands)
+            {
+                //if (CommandDictionary.CommandHelpMessages.ContainsKey(command))
+                //{
+                //    var description = CommandDictionary.CommandHelpMessages[command];
+                //    MQ.Write($"\ay{command} \aw- \ag{description}");
+                //}
+                //else
+                {
+                    MQ.Write($"\ay{command} \aw- \arNo description available.");
+                }
+            }
+            MQ.Write("End of registered commands list.");
+        }
+
+        private static DateTime GetBuildDate()
+        {
+            return File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location);
+        }
+
+        private static void RegisterCommandE3NextHelp()
+        {
+            EventProcessor.RegisterCommand("/e3next", (x) =>
+            {
+                string commands = null;
+                if (x.args.Count > 0) commands = x.args[0];
+                if (String.IsNullOrWhiteSpace(commands) || commands.Equals("Help"))
+                {
+                    var buildDate = GetBuildDate();
+                    MQ.Write("\a-g E3Next: \awVersion \ay" + Core._coreVersion + " \awBuilt: \ay" + buildDate);
+                    MQ.Write("\ay /e3next Help");
+                    MQ.Write("\ay /e3next Spells");
+                    MQ.Write("\ay /e3next Commands");
+                    return;
+                }
+                if (!String.IsNullOrWhiteSpace(commands) && commands.Equals("Spells"))
+                {
+                    //Spell.DisplaySpellOptions();
+                    return;
+                }
+                if (!String.IsNullOrWhiteSpace(commands) && commands.Equals("Commands"))
+                {
+                    MQ.Write("\ay List of Commands");
+                    ListRegisteredCommands();
+                    return;
+                }
+            });
+        }
+
         private static void RegisterCommandCampOut()
         {
             EventProcessor.RegisterCommand("/campout", (x) =>
