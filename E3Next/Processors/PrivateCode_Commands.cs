@@ -24,7 +24,7 @@ namespace E3Core.Processors
             RegisterCommandCampOut();
             RegisterCommandMoveToTarget();
             RegisterCommandPrintINI();
-            //RegisterCommandE3NextHelp();
+            RegisterCommandE3NextHelp();
         }
         private static IMQ MQ = E3.MQ;
         private static void LoadCommandStartup() // Load in Variables from INI file then run command 
