@@ -52,12 +52,12 @@ namespace E3Core.Processors
             var sortedCommands = EventProcessor.CommandList.Keys.OrderBy(key => key).ToList();
             foreach (var command in sortedCommands)
             {
-                //if (CommandDictionary.CommandHelpMessages.ContainsKey(command))
-                //{
-                //    var description = CommandDictionary.CommandHelpMessages[command];
-                //    MQ.Write($"\ay{command} \aw- \ag{description}");
-                //}
-                //else
+                if (CommandDictionary.CommandHelpMessages.ContainsKey(command))
+                {
+                    var description = CommandDictionary.CommandHelpMessages[command];
+                    MQ.Write($"\ay{command} \aw- \ag{description}");
+                }
+                else
                 {
                     MQ.Write($"\ay{command} \aw- \arNo description available.");
                 }
@@ -87,7 +87,7 @@ namespace E3Core.Processors
                 }
                 if (!String.IsNullOrWhiteSpace(commands) && commands.Equals("Spells"))
                 {
-                    //Spell.DisplaySpellOptions();
+                    Spell.DisplaySpellOptions();
                     return;
                 }
                 if (!String.IsNullOrWhiteSpace(commands) && commands.Equals("Commands"))
