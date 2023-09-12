@@ -165,7 +165,6 @@ namespace E3Core.Data
                                             Ifs = string.IsNullOrWhiteSpace(Ifs) ? keyData : Ifs + " && " + keyData;
                                         }
                                     }
-                                    MQ.Write(Ifs);
                                 }
                                 break;
 
