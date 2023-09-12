@@ -103,8 +103,10 @@
     <Compile Include="Classes\Wizard.cs" />
     <Compile Include="Core.cs" />
     <Compile Include="Data\Class.cs" />
+    <Compile Include="Data\CommandDictionary.cs" />
     <Compile Include="Data\MelodyIfs.cs" />
     <Compile Include="Data\ResistCounter.cs" />
+    <Compile Include="Data\SpellParse.cs" />
     <Compile Include="Data\SpellRequest.cs" />
     <Compile Include="Data\SpellTimer.cs" />
     <Compile Include="Data\Zone.cs" />
