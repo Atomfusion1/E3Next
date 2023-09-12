@@ -46,24 +46,23 @@ namespace E3Core.Processors
                 MQ.Write("\ar No, Command On Startup  in Save file");
             }
         }
-        public static void ListRegisteredCommands()
-        {
+        public static void ListRegisteredCommands() {
             MQ.Write("Registered Commands:");
             var sortedCommands = EventProcessor.CommandList.Keys.OrderBy(key => key).ToList();
-            foreach (var command in sortedCommands)
-            {
-                if (CommandDictionary.CommandHelpMessages.ContainsKey(command))
-                {
+            const int spacing = 10;
+
+            foreach (var command in sortedCommands) {
+                if (CommandDictionary.CommandHelpMessages.ContainsKey(command)) {
                     var description = CommandDictionary.CommandHelpMessages[command];
-                    MQ.Write($"\ay{command} \aw- \ag{description}");
+                    MQ.Write($"\ay{command.PadRight(spacing)} \aw- \ag{description}");
                 }
-                else
-                {
-                    MQ.Write($"\ay{command} \aw- \arNo description available.");
+                else {
+                    MQ.Write($"\ay{command.PadRight(spacing)} \aw- \arNo description available.");
                 }
             }
             MQ.Write("End of registered commands list.");
         }
+
 
         private static DateTime GetBuildDate()
         {
@@ -79,7 +78,7 @@ namespace E3Core.Processors
                 if (String.IsNullOrWhiteSpace(commands) || commands.Equals("Help"))
                 {
                     var buildDate = GetBuildDate();
-                    MQ.Write("\a-g E3Next: \awVersion \ay" + Core._coreVersion + " \awBuilt: \ay" + buildDate);
+                    MQ.Write("\a-g E3Next: \awVersion \ay" + Setup._e3Version + " \awBuilt: \ay" + buildDate);
                     MQ.Write("\ay /e3next Help");
                     MQ.Write("\ay /e3next Spells");
                     MQ.Write("\ay /e3next Commands");
