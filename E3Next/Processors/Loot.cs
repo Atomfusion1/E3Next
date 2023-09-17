@@ -308,12 +308,13 @@ namespace E3Core.Processors
 
                     MQ.Cmd("/target id " + c.ID);
                     MQ.Delay(750, "${Target.ID}");
+                    MQ.Cmd("/Squelch /face fast nolook id " + c.ID);
                     if (MQ.Query<bool>("${Target.ID}"))
                     {
                         e3util.TryMoveToTarget();
                         MQ.Delay(2250, "${Target.Distance3D} < 8"); // Give Time to get to Corpse 
                         MQ.Cmd("/target id " + c.ID);
-                        MQ.Delay(100);
+                        MQ.Delay(400, "!${Me.Moving}");
                         LootCorpse(c);
 
                         if (MQ.Query<bool>("${Window[LootWnd].Open}"))
