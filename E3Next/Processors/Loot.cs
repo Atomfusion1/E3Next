@@ -296,10 +296,16 @@ namespace E3Core.Processors
                     {
                         if (Basics.InCombat()) return;
                     }
-                    if (MQ.Query<int>($"${{Spawn[id {c.ID}].ID}}") == 0)
-                    {
-                        continue; // If spawn not updated try again 
+                    if (MQ.Query<int>($"${{Spawn[id {c?.ID}].ID}}") == 0) {
+                        c = corpses.OrderBy(x => x.Distance).Skip(1).FirstOrDefault();
+                        if (c == null || MQ.Query<int>($"${{Spawn[id {c?.ID}].ID}}") == 0) {
+                            c = corpses.OrderBy(x => x.Distance).Skip(2).FirstOrDefault();
+                            if (c == null || MQ.Query<int>($"${{Spawn[id {c?.ID}].ID}}") == 0) {
+                                continue;
+                            }
+                        }
                     }
+
                     MQ.Cmd("/target id " + c.ID);
                     MQ.Delay(750, "${Target.ID}");
                     if (MQ.Query<bool>("${Target.ID}"))
