@@ -300,13 +300,15 @@ namespace E3Core.Data
             { SpellOption.BeforeEvent, "Event to trigger before casting." }
         };
 
-        public static void DisplaySpellOptions() {
+        public static void DisplaySpellOptions(string filter = null) {
             Console.WriteLine("Available Spell Options and their Descriptions:\n");
 
             var sortedSpellOptions = Enum.GetValues(typeof(SpellOption))
                                          .Cast<SpellOption>()
+                                         .Where(option => string.IsNullOrEmpty(filter) || option.ToString().IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
                                          .OrderBy(option => option.ToString())
                                          .ToList();
+
 
             foreach (SpellOption option in sortedSpellOptions) {
                 if (SpellOptionHelpMessages.ContainsKey(option)) {
@@ -320,6 +322,7 @@ namespace E3Core.Data
 
             MQ.Write("\aw End of Spell Options list.");
         }
+
 
 
 
