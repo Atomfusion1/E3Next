@@ -11,12 +11,22 @@ using IniParser.Model;
 using System.Security.Cryptography;
 using System.IO;
 using System.Reflection;
-
+using System.Runtime.InteropServices;
 
 namespace E3Core.Processors
 {
     public static class PrivateCommands
     {
+        [DllImport("kernel32.dll")]
+        public static extern bool Beep(uint dwFreq, uint dwDuration);
+
+        [DllImport("user32.dll")]
+        public static extern bool MessageBeep(uint uType);
+
+        static void PlayTone(uint freq, uint lengthms) {
+            // Play a tone using Beep
+            Beep(freq, lengthms);  // 440 Hz for 1 second
+        }
 
         public static void StartupCommands()
         {
@@ -69,34 +79,46 @@ namespace E3Core.Processors
             return File.GetLastWriteTime(Assembly.GetExecutingAssembly().Location);
         }
 
-        private static void RegisterCommandE3NextHelp()
-        {
+        private static void RegisterCommandE3NextHelp() {
             EventProcessor.RegisterCommand("/e3next", (x) =>
             {
                 string commands = null;
                 if (x.args.Count > 0) commands = x.args[0];
-                if (String.IsNullOrWhiteSpace(commands) || commands.Equals("Help"))
-                {
+                uint[] frequencies =    { 659, 622, 659, 622, 659, 494, 587, 523, 440};
+                uint[] durations =      { 225, 225, 225, 225, 225, 225, 225, 225, 625};
+
+                // Check if commands is null, empty, or equals "Help" ignoring case
+                if (String.IsNullOrWhiteSpace(commands) || commands.Equals("Help", StringComparison.OrdinalIgnoreCase)) {
                     var buildDate = GetBuildDate();
                     MQ.Write("\a-g E3Next: \awVersion \ay" + Setup._e3Version + " \awBuilt: \ay" + buildDate);
                     MQ.Write("\ay /e3next Help");
+                    MQ.Write("\ar /e3next GoneMad");
                     MQ.Write("\ay /e3next Spells");
                     MQ.Write("\ay /e3next Commands");
                     return;
                 }
-                if (!String.IsNullOrWhiteSpace(commands) && commands.Equals("Spells"))
-                {
-                    Spell.DisplaySpellOptions();
+                if (commands.Equals("GoneMad", StringComparison.OrdinalIgnoreCase)) {
+                    for (int i = 0; i < frequencies.Length; i++) {
+                        PlayTone(frequencies[i], durations[i]);
+                    }
+                }
+                if (commands.Equals("Spells", StringComparison.OrdinalIgnoreCase)) {
+                    if (x.args.Count > 1) {
+                        Spell.DisplaySpellOptions(x.args[1]);  // pass the next argument as the filter
+                    }
+                    else {
+                        Spell.DisplaySpellOptions();
+                    }
                     return;
                 }
-                if (!String.IsNullOrWhiteSpace(commands) && commands.Equals("Commands"))
-                {
+                if (commands.Equals("Commands", StringComparison.OrdinalIgnoreCase)) {
                     MQ.Write("\ay List of Commands");
                     ListRegisteredCommands();
                     return;
                 }
             });
         }
+
 
         private static void RegisterCommandCampOut()
         {
