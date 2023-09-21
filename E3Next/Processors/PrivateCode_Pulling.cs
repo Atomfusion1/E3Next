@@ -49,7 +49,7 @@ namespace E3Core.Processors
                 PrivateCode.LazyMode = false;
                 return;
             }
-            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc id {targetID}].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 70)
+            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc id {targetID}].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 100)
             {
                 if (targetID != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 120)
                 {
@@ -215,7 +215,7 @@ namespace E3Core.Processors
         {
             if (E3.MQ.Query<double>($"${{Spawn[{returnToString} pc].Distance}}") < 30) return;
             E3.MQ.Cmd("/squelch /nav stop log=off");
-            E3.MQ.Cmd("/squelch /nav id " + E3.MQ.Query<Int32>($"${{Spawn[{returnToString}].ID}}").ToString() + " dist=30 log=off");
+            E3.MQ.Cmd("/squelch /nav id " + E3.MQ.Query<Int32>($"${{Spawn[{returnToString}].ID}}").ToString() + " dist=25 log=off");
             E3.MQ.Delay(30000, $"${{Spawn[{returnToString} pc].Distance}} < 30");
             E3.MQ.Delay(100);
             E3.MQ.Cmd("/squelch /face fast nolook");
