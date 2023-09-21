@@ -34,6 +34,7 @@ namespace E3Core.Processors
             RegisterCommandCampOut();
             RegisterCommandMoveToTarget();
             RegisterCommandPrintINI();
+            RegisterCommandAlwaysLoot();
             RegisterCommandE3NextHelp();
         }
         private static IMQ MQ = E3.MQ;
@@ -72,6 +73,47 @@ namespace E3Core.Processors
             }
             MQ.Write("End of registered commands list.");
         }
+
+        private static void RegisterCommandAlwaysLoot() {
+            EventProcessor.RegisterCommand("/alwaysloot", (x) => {
+                if (x.args.Count == 1) {
+                    string itemToAdd = x.args[0];
+
+                    if (!E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Contains(itemToAdd)) {
+                        MQ.Write("\agAdding Always Loot Item \ay" + itemToAdd);
+                        E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Add(itemToAdd);
+                        // Optionally, save the list to a file or database here.
+                    }
+                    else {
+                        MQ.Write("\arItem already in Always Loot list: \ay" + itemToAdd);
+                    }
+
+                    return;
+                }
+                if (x.args.Count == 0) {
+                    var CursorItem = MQ.Query<string>("${Cursor.Name}");
+                    if (CursorItem.Length > 0 && CursorItem != "NULL") {
+
+                        if (!E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Contains(CursorItem)) {
+                            MQ.Write("\agAdding cursor item to Always Loot Item \ay" + CursorItem);
+                            E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Add(CursorItem);
+                            MQ.Write(string.Join(", ", E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot)); // Corrected this line to properly print the list
+                            E3.GeneralSettings.SaveListToIni(E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot, "LootOnlyStackable.ini");
+                        }
+
+                        else {
+                            MQ.Write("\arCursor item already in Always Loot list: \ay" + CursorItem);
+                        }
+
+                        return;
+                    }
+                }
+                MQ.Write("\ayUsage: /alwaysloot \"item name\" or /alwaysloot    (blank with item in cursor)");
+                return;
+            });
+        }
+
+
 
 
         private static DateTime GetBuildDate()

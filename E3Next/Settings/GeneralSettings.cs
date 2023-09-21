@@ -32,7 +32,7 @@ namespace E3Core.Settings
 
         public Int32 Loot_LootItemDelay = 300;
         public string Loot_LinkChannel = String.Empty;
-        public List<string> Loot_LinkChannelValid = new List<string>() {"g","gu","say","rsay","shout","gsay", "rs"};
+        public List<string> Loot_LinkChannelValid = new List<string>() {"g","gu","say","rsay","shout","gsay", "rs", "echo"};
         public Int32 MaxGemSlots = 8 + MQ.Query<Int32>("${Me.AltAbility[Mnemonic Retention].Rank}");
 
         private Int32 casting_DefaultSpellGem = 8;
@@ -94,38 +94,71 @@ namespace E3Core.Settings
         {
             LoadData();
         }
-        public void LoadData()
-        {
+        public IniData LoadIniData(string baseFilename, string currentSet, string configFolder, string settingsFolder) {
+            string filename = GetSettingsFilePath(baseFilename);
 
-            _filename = GetSettingsFilePath("General Settings.ini");
-            if (!String.IsNullOrEmpty(CurrentSet))
-            {
-                _filename = _filename.Replace(".ini", "_" + CurrentSet + ".ini");
+            if (!String.IsNullOrEmpty(currentSet)) {
+                filename = filename.Replace(".ini", "_" + currentSet + ".ini");
             }
+
+            FileIniDataParser fileIniData = e3util.CreateIniParser();
             IniData parsedData;
+
+            if (!System.IO.File.Exists(filename)) {
+                if (!System.IO.Directory.Exists(configFolder + settingsFolder)) {
+                    System.IO.Directory.CreateDirectory(configFolder + settingsFolder);
+                }
+
+                parsedData = CreateSettings(filename);
+            }
+            else {
+                parsedData = fileIniData.ReadFile(filename);
+            }
+
+            _fileLastModifiedFileName = filename;
+            _fileLastModified = System.IO.File.GetLastWriteTime(filename);
+
+            if (parsedData == null) {
+                throw new Exception("Could not load General Settings file");
+            }
+
+            return parsedData;
+        }
+        public void SaveIniData(IniData dataToSave, string baseFilename) {
+            string configFolder = _configFolder;
+            string settingsFolder = _settingsFolder;
+            string filename = GetSettingsFilePath(baseFilename);
 
             FileIniDataParser fileIniData = e3util.CreateIniParser();
 
-            if (!System.IO.File.Exists(_filename))
-            {
-                if (!System.IO.Directory.Exists(_configFolder + _settingsFolder))
-                {
-                    System.IO.Directory.CreateDirectory(_configFolder + _settingsFolder);
-                }
-             
-                parsedData = CreateSettings(_filename);
+            // Ensure directory exists
+            if (!System.IO.Directory.Exists(configFolder + settingsFolder)) {
+                System.IO.Directory.CreateDirectory(configFolder + settingsFolder);
             }
-            else
-            {
-                parsedData = fileIniData.ReadFile(_filename);
+
+            // Write the data to the file
+            fileIniData.WriteFile(filename, dataToSave);
+        }
+        public void SaveListToIni(List<string> listToSave, string baseFilename) {
+            IniData lootData = new IniData();
+
+            // Add the "Loot" section to the lootData
+            lootData.Sections.AddSection("Loot");
+
+            // Insert each string from the list into the Loot section of lootData
+            foreach (var item in listToSave) {
+                lootData["Loot"].AddKey("Always Loot Item", item);
             }
-            _fileLastModifiedFileName = _filename;
-            _fileLastModified = System.IO.File.GetLastWriteTime(_filename);
-            //have the data now!
-            if (parsedData==null)
-            {
-                throw new Exception("Could not load General Settings file");
-            }
+
+            // Save the lootData to the specified INI file
+            SaveIniData(lootData, baseFilename);
+        }
+
+
+
+        public void LoadData()
+        {
+            IniData parsedData = LoadIniData("General Settings.ini", CurrentSet, _configFolder, _settingsFolder);
 
             LoadKeyData("General", "AutoMedBreak PctMana", parsedData, ref General_AutoMedBreakPctMana);
             //    section.Keys.AddKey("NetworkMethod", "EQBC");
@@ -164,9 +197,9 @@ namespace E3Core.Settings
             LoadKeyData("Loot", "Loot Only Stackable: With Value Greater Than Or Equal in Copper", parsedData, ref Loot_OnlyStackableValueGreaterThanInCopper);
             LoadKeyData("Loot", "Loot Only Stackable: Loot all Tradeskill items (On/Off)", parsedData, ref Loot_OnlyStackableAllTradeSkillItems);
             LoadKeyData("Loot", "Loot Only Stackable: Loot common tradeskill items ie:pelts ores silks etc (On/Off)", parsedData, ref Loot_OnlyStackableOnlyCommonTradeSkillItems);
-            LoadKeyData("Loot", "Loot Only Stackable: Always Loot Item", parsedData, Loot_OnlyStackableAlwaysLoot);
             LoadKeyData("Loot", "Loot Only Stackable: Honor Loot File Skip Settings (On/Off)", parsedData, ref Loot_OnlyStackableHonorLootFileSkips);
-        
+            //LoadKeyData("Loot", "Loot Only Stackable: Always Loot Item", parsedData, Loot_OnlyStackableAlwaysLoot);
+
             LoadKeyData("Manastone", "NumerOfClicksPerLoop", parsedData, ref ManaStone_NumerOfClicksPerLoop);
             LoadKeyData("Manastone", "NumberOfLoops", parsedData, ref ManaStone_NumberOfLoops);
             LoadKeyData("Manastone", "DelayBetweenLoops (in milliseconds)", parsedData, ref ManaStone_DelayBetweenLoops);
@@ -207,7 +240,14 @@ namespace E3Core.Settings
             LoadKeyData("Movement", "Anchor Distance Minimum", parsedData, ref Movement_AnchorDistanceMin);
             LoadKeyData("Movement", "Anchor Distance Maximum", parsedData, ref Movement_AnchorDistanceMax);
             LoadKeyData("Movement", "Milliseconds till standing Still",parsedData,ref Movement_StandingStill);
+            LoadData_AlwaysLoot();
             CheckMovementValues();
+        }
+
+        public void LoadData_AlwaysLoot() {
+            IniData parsedData = LoadIniData("LootOnlyStackable.ini", CurrentSet, _configFolder, _settingsFolder);
+            MQ.Write(parsedData.ToString());
+            LoadKeyData("Loot", "Always Loot Item", parsedData, Loot_OnlyStackableAlwaysLoot);
         }
 
         private void CheckAssistValues()

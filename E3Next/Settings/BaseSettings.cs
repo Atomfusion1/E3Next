@@ -277,6 +277,31 @@ namespace E3Core.Settings
                 }
             }
         }
+
+        public static void SaveKeyData(string sectionKey, string Key, IniData parsedData, List<String> collectionToSave) {
+            MQ.Write($"Saving to {sectionKey} {Key}");
+
+            // Ensure the section exists or create it
+            if (!parsedData.Sections.ContainsSection(sectionKey)) {
+                parsedData.Sections.AddSection(sectionKey);
+            }
+
+            var section = parsedData.Sections[sectionKey];
+
+            // Check if the key exists. If not, add it with an empty value (this will create it)
+            if (section[Key] == null) {
+                section[Key] = "";
+            }
+
+            // We assume that to store multiple values for a key, they are stored as comma-separated values
+            // So we'll join the collection into a single string to store
+            string valuesToStore = string.Join(",", collectionToSave.Where(data => !String.IsNullOrWhiteSpace(data)));
+
+            // Save the collected data as a CSV string
+            section[Key] = valuesToStore;
+        }
+
+
         public static void LoadKeyData(string sectionKey, string Key, IniData parsedData, List<Data.Spell> collectionToAddTo)
         {
             _log.Write($"{sectionKey} {Key}");
