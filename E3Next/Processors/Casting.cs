@@ -85,7 +85,6 @@ namespace E3Core.Processors
 
 					if (_spawns.TryByID(targetID, out var s))
 					{
-
 						//targets of 0 means keep current target
 						if (targetID > 0)
 						{
@@ -95,7 +94,7 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
-						MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+						if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 					}
 					BeforeEventCheck(spell);
 					BeforeSpellCheck(spell, targetID);
@@ -117,16 +116,15 @@ namespace E3Core.Processors
 					}
 					return CastReturn.CAST_SUCCESS;
 				}
-                //bard can cast insta cast items while singing, they be special.
-                else if (E3.CurrentClass == Class.Bard && spell.NoMidSongCast == false && spell.MyCastTime <= 500 && (spell.CastType == CastType.Item || spell.CastType == CastType.AA || spell.CastType == Data.CastType.Ability))
-                {
-                    //instant cast item, can cast while singing
-                    //note bards are special and cast do insta casts while doing normal singing. they have their own 
-                    //sing area, so only go here to do item/aa casts while singing. can't do IsCasting checks as it will catch
-                    //on the singing... so just kick out and assume all is well.
-                    if (_spawns.TryByID(targetID, out var s))
+          //bard can cast insta cast items while singing, they be special.
+          else if (E3.CurrentClass == Class.Bard && spell.NoMidSongCast == false && spell.MyCastTime <= 500 && (spell.CastType == CastType.Item || spell.CastType == CastType.AA || spell.CastType == Data.CastType.Ability))
+          {
+              //instant cast item, can cast while singing
+              //note bards are special and cast do insta casts while doing normal singing. they have their own 
+              //sing area, so only go here to do item/aa casts while singing. can't do IsCasting checks as it will catch
+              //on the singing... so just kick out and assume all is well.
+              if (_spawns.TryByID(targetID, out var s))
 					{
-
 						String targetName = String.Empty;
 						//targets of 0 means keep current target
 						if (targetID > 0)
@@ -137,15 +135,15 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
-                        //this lets bard kick regardless of current song status, otherwise will wait until between songs to kick
-                        string abilityToCheck = spell.CastName;
-                        if (spell.CastType == Data.CastType.Ability && abilityToCheck.Equals("Kick", StringComparison.OrdinalIgnoreCase))
-                        {
-                            MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
-                            MQ.Cmd($"/doability \"{spell.CastName}\"");
-                            return CastReturn.CAST_SUCCESS;
-                        }
-                        MQ.Write($"\agBardCast {spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+            //this lets bard kick regardless of current song status, otherwise will wait until between songs to kick
+            string abilityToCheck = spell.CastName;
+            if (spell.CastType == Data.CastType.Ability && abilityToCheck.Equals("Kick", StringComparison.OrdinalIgnoreCase))
+            {
+                if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+                MQ.Cmd($"/doability \"{spell.CastName}\"");
+                return CastReturn.CAST_SUCCESS;
+            }
+            if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\agBardCast {spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 						if (spell.CastType == CastType.AA)
 						{
 							MQ.Cmd($"/alt activate {spell.CastID}");
@@ -349,7 +347,6 @@ namespace E3Core.Processors
 							if (MQ.Query<bool>("${Me.ActiveDisc.ID}") && spell.TargetType.Equals("Self"))
 							{
 								return CastReturn.CAST_ACTIVEDISC;
-
 							}
 							else
 							{
@@ -362,7 +359,6 @@ namespace E3Core.Processors
 								returnValue = CastReturn.CAST_SUCCESS;
 								goto startCasting;
 							}
-
 						}
 						else if (spell.CastType == Data.CastType.Ability)
 						{
@@ -386,37 +382,37 @@ namespace E3Core.Processors
 								_log.Write("Doing Ability:Slam based logic checks...");
 								if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FirstAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 1");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_SecondAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 2");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_ThirdAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 3");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FourthAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 4");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FourthAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 5");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FifthAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 5");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_SixthAbilityButton].Text.Equal[Slam]}"))
 								{
-									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 6");
 								}
 								else
@@ -426,7 +422,7 @@ namespace E3Core.Processors
 							}
 							else
 							{
-								MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+								if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 								MQ.Cmd($"/doability \"{spell.CastName}\"");
 							}
 
@@ -472,7 +468,7 @@ namespace E3Core.Processors
 								if (spell.CastType == Data.CastType.Spell)
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 
 									MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\"");
 									if (spell.MyCastTime > 500)
@@ -485,7 +481,7 @@ namespace E3Core.Processors
 									if (spell.CastType == CastType.AA)
 									{
 										PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-										MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+										if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 
 										MQ.Cmd($"/casting \"{spell.CastName}|alt\"");
 										UpdateAAInCooldown(spell);
@@ -502,7 +498,7 @@ namespace E3Core.Processors
 									else
 									{
 										PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-										MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+										if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 
 										//else its an item
 										MQ.Cmd($"/casting \"{spell.CastName}|{spell.CastType.ToString()}\"");
@@ -519,7 +515,7 @@ namespace E3Core.Processors
 								if (spell.CastType == Data.CastType.Spell)
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 									MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\" \"-targetid|{targetID}\"");
 									if (spell.MyCastTime > 500)
 									{
@@ -529,7 +525,7 @@ namespace E3Core.Processors
 								else
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+									if (E3.CharacterSettings.Misc_DebugLogLevel > 0) MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 									if (spell.CastType == CastType.AA)
 									{
 										MQ.Cmd($"/casting \"{spell.CastName}|alt\" \"-targetid|{targetID}\"");
@@ -557,7 +553,6 @@ namespace E3Core.Processors
 								}
 							}
 						}
-
 					startCasting:
 
 						//needed for heal interrupt check
