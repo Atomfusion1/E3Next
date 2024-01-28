@@ -97,6 +97,68 @@ namespace E3Core.Settings
         {
             LoadData();
         }
+
+
+        public IniData LoadIniData(string baseFilename, string currentSet, string configFolder, string settingsFolder) {
+            string filename = GetSettingsFilePath(baseFilename);
+
+            if (!String.IsNullOrEmpty(currentSet)) {
+                filename = filename.Replace(".ini", "_" + currentSet + ".ini");
+            }
+
+            FileIniDataParser fileIniData = e3util.CreateIniParser();
+            IniData parsedData;
+
+            if (!System.IO.File.Exists(filename)) {
+                if (!System.IO.Directory.Exists(configFolder + settingsFolder)) {
+                    System.IO.Directory.CreateDirectory(configFolder + settingsFolder);
+                }
+
+                parsedData = CreateSettings(filename);
+            }
+            else {
+                parsedData = fileIniData.ReadFile(filename);
+            }
+
+            _fileLastModifiedFileName = filename;
+            _fileLastModified = System.IO.File.GetLastWriteTime(filename);
+
+            if (parsedData == null) {
+                throw new Exception("Could not load General Settings file");
+            }
+
+            return parsedData;
+        }
+        public void SaveIniData(IniData dataToSave, string baseFilename) {
+            string configFolder = _configFolder;
+            string settingsFolder = _settingsFolder;
+            string filename = GetSettingsFilePath(baseFilename);
+
+            FileIniDataParser fileIniData = e3util.CreateIniParser();
+
+            // Ensure directory exists
+            if (!System.IO.Directory.Exists(configFolder + settingsFolder)) {
+                System.IO.Directory.CreateDirectory(configFolder + settingsFolder);
+            }
+
+            // Write the data to the file
+            fileIniData.WriteFile(filename, dataToSave);
+        }
+        public void SaveListToIni(List<string> listToSave, string baseFilename) {
+            IniData lootData = new IniData();
+
+            // Add the "Loot" section to the lootData
+            lootData.Sections.AddSection("Loot");
+
+            // Insert each string from the list into the Loot section of lootData
+            foreach (var item in listToSave) {
+                lootData["Loot"].AddKey("Always Loot Item", item);
+            }
+
+            // Save the lootData to the specified INI file
+            SaveIniData(lootData, baseFilename);
+        }
+
         public void LoadData()
         {
 
