@@ -39,6 +39,7 @@ namespace E3Core.Processors
 
         private static void Private_CallTarget()
         {
+            if (E3.MQ.Query<Int32>(@"${Me.XTarget[1].ID}") < 1) return;
             int targetID = E3.MQ.Query<Int32>($"${{Me.XTarget[1].ID}}");
             if (E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance3D}}") > 120) return;
             if (ZoneID != MQ.Query<int>($"${{Zone.ID}}"))
@@ -49,11 +50,14 @@ namespace E3Core.Processors
                 PrivateCode.LazyMode = false;
                 return;
             }
-            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc id {targetID}].ID}}") > 0 && E3.MQ.Query<decimal>($"${{Spawn[{PrivateCode.GroupCampMember} pc].Distance}}") < 100)
+            if (targetID > 0 && E3.MQ.Query<int>($"${{Spawn[npc id {targetID}].ID}}") > 0)
             {
-                if (targetID != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 120)
+                //MQ.Write("2 Call Target" + " " + targetID + " " + EngagedID + " " + E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}"));
+                // You Must Disable //e3util.PutOriginalTargetBackIfNeeded(orgTargetID);
+                // in ClassMethodCalls calls
+                if (targetID != EngagedID && E3.MQ.Query<decimal>(@"${Me.XTarget[1].Distance}") < 150)
                 {
-                    MQ.Delay(2000, "${Me.XTarget[1].Distance} < 20");
+                    MQ.Delay(2000, "${Me.XTarget[1].Distance} < 50");
                     E3.MQ.Cmd(@"/target id " + targetID.ToString());
                     E3.MQ.Delay(50);
                     if (PrivateCode.PullingMode) E3.MQ.Cmd(@"/squelch /face fast nolook");
@@ -82,7 +86,7 @@ namespace E3Core.Processors
             // Force Pickup of Mobs 
             CheckAndCamp();
             if (E3.CharacterSettings.Misc_AutoLootEnabled && MQ.Query<Int32>($"${{SpawnCount[NPC Corpse radius 100]}}") > 5) return;
-            
+            if (E3.MQ.Query<int>($"${{Spawn[{PrivateCode.GroupCampMember} pc].PctMana}}") < 40) return;
             if (!PullingTimer.IsElapsed()) return;
             // Not Used atm 
             if (!myTimer.IsElapsed() || E3.MQ.Query<int>(@"${Me.PctHPs}") < 10 || E3.MQ.Query<int>($"${{Me.XTarget[1].ID}}") > 0)
