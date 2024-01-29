@@ -12,6 +12,7 @@ using E3Core.Processors;
 using System.Runtime.InteropServices;
 using NetMQ;
 using System.Globalization;
+using E3NextUI.Themese;
 
 /// <summary>
 /// Version 0.1
@@ -958,7 +959,11 @@ namespace MonoCore
             {
                 return;
             }
+<<<<<<< Updated upstream
             mq_Echo("command recieved:" + commandLine);
+=======
+            // MQ.Write("command received:" + commandLine, Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 
             EventProcessor.ProcessMQCommand(commandLine);
         }
@@ -1453,7 +1458,7 @@ namespace MonoCore
     public class Logging
     {
         public static LogLevels TraceLogLevel = LogLevels.None;
-        public static LogLevels MinLogLevelTolog = LogLevels.Debug;
+        public static LogLevels MinLogLevelTolog = LogLevels.Info;
         public static LogLevels DefaultLogLevel = LogLevels.Debug;
         private static ConcurrentDictionary<String, String> _classLookup = new ConcurrentDictionary<string, string>();
         public static IMQ MQ = Core.mqInstance;
@@ -1494,6 +1499,10 @@ namespace MonoCore
             {
                 MQ.Write($"\ag{className}:\ao{memberName}\aw:({lineNumber}) {message}", "", "Logging");
 
+            }
+            if (logLevel == LogLevels.Info) 
+            {
+                MQ.Write("Info "+ $"{message}");
             }
             else
             {

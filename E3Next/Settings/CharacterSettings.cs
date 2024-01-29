@@ -3,6 +3,7 @@ using E3Core.Processors;
 using E3Core.Utility;
 using IniParser;
 using IniParser.Model;
+using MonoCore;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -35,7 +36,12 @@ namespace E3Core.Settings
         public string Misc_AnchorChar = string.Empty;
         public bool Misc_RemoveTorporAfterCombat = true;
         public Int32 Misc_DelayAfterCastWindowDropsForSpellCompletion = 0;
+<<<<<<< Updated upstream
        
+=======
+        public string Misc_DebugLogLevel = "info";
+
+>>>>>>> Stashed changes
         public bool Misc_AutoForage = false;
         
         public bool Rogue_AutoHide = false;
@@ -279,7 +285,6 @@ namespace E3Core.Settings
             ServerName = E3.ServerName;
             CharacterClass = E3.CurrentClass;
             LoadData();
-
         }
         /// <summary>
         /// Loads the data.
@@ -308,6 +313,14 @@ namespace E3Core.Settings
             LoadKeyData("Misc", "Dismount On Interrupt (On/Off)", ParsedData, ref Misc_DismountOnInterrupt);
             LoadKeyData("Misc", "Delay in MS After CastWindow Drops For Spell Completion",ParsedData, ref Misc_DelayAfterCastWindowDropsForSpellCompletion);
 			LoadKeyData("Misc", "If FD stay down (true/false)", ParsedData, ref IfFDStayDown);
+<<<<<<< Updated upstream
+=======
+            LoadKeyData("Misc", "Debug Log Level(debug,info,error)", ParsedData, ref Misc_DebugLogLevel);
+            // Set Debug Levels On reload
+            if (Enum.TryParse(Misc_DebugLogLevel, true, out Logging.LogLevels logLevel)) {
+                Logging.MinLogLevelTolog = (Logging.LogLevels)Enum.Parse(typeof(Logging.LogLevels), Misc_DebugLogLevel, true);
+            }
+>>>>>>> Stashed changes
 
 			LoadKeyData("Manastone", "Override General Settings (On/Off)", ParsedData, ref Manastone_OverrideGeneralSettings);
             LoadKeyData("Manastone", "Manastone Enabled (On/Off)", ParsedData, ref Manastone_Enabled);
@@ -591,7 +604,11 @@ namespace E3Core.Settings
             section.Keys.AddKey("Dismount On Interrupt (On/Off)","On");
             section.Keys.AddKey("Delay in MS After CastWindow Drops For Spell Completion", "0");
 			section.Keys.AddKey("If FD stay down (true/false)", "False");
+<<<<<<< Updated upstream
 		
+=======
+            section.Keys.AddKey("Debug Log Level(debug,info,error)", "info");
+>>>>>>> Stashed changes
 
 			newFile.Sections.AddSection("Assist Settings");
             section = newFile.Sections.GetSectionData("Assist Settings");

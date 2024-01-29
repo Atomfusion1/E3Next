@@ -95,7 +95,11 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
+<<<<<<< Updated upstream
 						MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+						_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 					}
 					BeforeEventCheck(spell);
 					BeforeSpellCheck(spell, targetID);
@@ -137,6 +141,7 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
+<<<<<<< Updated upstream
                         //this lets bard kick regardless of current song status, otherwise will wait until between songs to kick
                         string abilityToCheck = spell.CastName;
                         if (spell.CastType == Data.CastType.Ability && abilityToCheck.Equals("Kick", StringComparison.OrdinalIgnoreCase))
@@ -146,6 +151,17 @@ namespace E3Core.Processors
                             return CastReturn.CAST_SUCCESS;
                         }
                         MQ.Write($"\agBardCast {spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+=======
+            //this lets bard kick regardless of current song status, otherwise will wait until between songs to kick
+            string abilityToCheck = spell.CastName;
+            if (spell.CastType == Data.CastType.Ability && abilityToCheck.Equals("Kick", StringComparison.OrdinalIgnoreCase))
+            {
+                _log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}",Logging.LogLevels.Info);
+                MQ.Cmd($"/doability \"{spell.CastName}\"");
+                return CastReturn.CAST_SUCCESS;
+            }
+            _log.Write($"\agBardCast {spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 						if (spell.CastType == CastType.AA)
 						{
 							MQ.Cmd($"/alt activate {spell.CastID}");
@@ -386,37 +402,65 @@ namespace E3Core.Processors
 								_log.Write("Doing Ability:Slam based logic checks...");
 								if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FirstAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 1");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_SecondAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 2");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_ThirdAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 3");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FourthAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 4");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FourthAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 5");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FifthAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 5");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_SixthAbilityButton].Text.Equal[Slam]}"))
 								{
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd("/doability 6");
 								}
 								else
@@ -426,7 +470,11 @@ namespace E3Core.Processors
 							}
 							else
 							{
+<<<<<<< Updated upstream
 								MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+=======
+								_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 								MQ.Cmd($"/doability \"{spell.CastName}\"");
 							}
 
@@ -472,7 +520,11 @@ namespace E3Core.Processors
 								if (spell.CastType == Data.CastType.Spell)
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+=======
+									_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 
 									MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\"");
 									if (spell.MyCastTime > 500)
@@ -485,7 +537,11 @@ namespace E3Core.Processors
 									if (spell.CastType == CastType.AA)
 									{
 										PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
+<<<<<<< Updated upstream
 										MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+=======
+										_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 
 										MQ.Cmd($"/casting \"{spell.CastName}|alt\"");
 										UpdateAAInCooldown(spell);
@@ -502,7 +558,11 @@ namespace E3Core.Processors
 									else
 									{
 										PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
+<<<<<<< Updated upstream
 										MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+=======
+										_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 
 										//else its an item
 										MQ.Cmd($"/casting \"{spell.CastName}|{spell.CastType.ToString()}\"");
@@ -519,7 +579,11 @@ namespace E3Core.Processors
 								if (spell.CastType == Data.CastType.Spell)
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+=======
+									_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\" \"-targetid|{targetID}\"");
 									if (spell.MyCastTime > 500)
 									{
@@ -529,7 +593,11 @@ namespace E3Core.Processors
 								else
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
+<<<<<<< Updated upstream
 									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+=======
+									_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 									if (spell.CastType == CastType.AA)
 									{
 										MQ.Cmd($"/casting \"{spell.CastName}|alt\" \"-targetid|{targetID}\"");

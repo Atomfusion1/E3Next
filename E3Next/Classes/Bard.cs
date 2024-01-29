@@ -192,7 +192,11 @@ namespace E3Core.Classes
                 {
                     return;
                 }
+<<<<<<< Updated upstream
                 MQ.Write($"\atTwist \ag{songToPlay.SpellName}");
+=======
+                _log.Write($"\atTwist \ag{songToPlay.SpellName}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
                 _nextBardCast = Core.StopWatch.ElapsedMilliseconds + (int)songToPlay.MyCastTime;
                 Casting.Sing(0, songToPlay);
             }
@@ -214,7 +218,11 @@ namespace E3Core.Classes
             CharacterSettings.LoadKeyData($"{melodyName} Melody", "Song", E3.CharacterSettings.ParsedData, _songs);
             if(_songs.Count>0)
             {
+<<<<<<< Updated upstream
                 MQ.Write($"\aoStart Melody:\ag{melodyName}");
+=======
+                _log.Write($"\aoStart Melody:\ag{melodyName}", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
                 MQ.Cmd("/stopsong");
                 _forceOverride = force;
                 _playingMelody = true;

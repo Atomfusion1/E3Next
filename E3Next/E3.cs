@@ -185,9 +185,14 @@ namespace E3Core.Processors
 				{
 					Burns.UseBurns();
 					//using (Log.Trace($"ClassMethodCalls-{kvp.Key}-Main"))
-					{
+					{				
 						kvp.Value.Invoke();
-					}
+						// Lets Private Functions Change Target 
+						if (kvp.Key.Equals("Main")) 
+						{
+							orgTargetID = MQ.Query<Int32>("${Target.ID}");
+						}
+                    }
 					EventProcessor.ProcessEventsInQueues("/nowcast");
 					EventProcessor.ProcessEventsInQueues("/backoff");
 				}
@@ -346,7 +351,7 @@ namespace E3Core.Processors
                 AsyncIO.ForceDotNet.Force();
 
                 Logging.TraceLogLevel = Logging.LogLevels.None; //log level we are currently at
-                Logging.MinLogLevelTolog = Logging.LogLevels.Error; //log levels have integers assoicatd to them. you can set this to Error to only log errors. 
+                Logging.MinLogLevelTolog = Logging.LogLevels.Info; //log levels have integers assoicatd to them. you can set this to Error to only log errors. 
                 Logging.DefaultLogLevel = Logging.LogLevels.Debug; //the default if a level is not passed into the _log.write statement. useful to hide/show things.
                 MainProcessor.ApplicationName = "E3"; //application name, used in some outputs
                 MonoCore.MQ.MaxMillisecondsToWork = 40;
@@ -385,10 +390,11 @@ namespace E3Core.Processors
                 }
 				CharacterSettings = new Settings.CharacterSettings();
                 AdvancedSettings = new Settings.AdvancedSettings();
-				
-				//setup is done after the settings are setup.
-				//as there is an order dependecy
-				Setup.Init();
+
+
+                //setup is done after the settings are setup.
+                //as there is an order dependecy
+                Setup.Init();
                 IsInit = true;
                 MonoCore.Spawns.RefreshTimePeriodInMS = 500;
 			}

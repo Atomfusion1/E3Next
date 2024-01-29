@@ -297,7 +297,11 @@ namespace E3Core.Processors
                     
                 }
 
+<<<<<<< Updated upstream
                 E3.Bots.Broadcast("\agFinished looting area");
+=======
+                _log.Write("\agFinished looting area", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
                 MQ.Delay(100); // Wait for fading corpses to disappear
             }
         }

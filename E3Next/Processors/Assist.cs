@@ -247,7 +247,11 @@ namespace E3Core.Processors
                                     {
                                         MQ.Cmd("/doability Taunt");
 
+<<<<<<< Updated upstream
                                         E3.Bots.Broadcast($"Taunting {s.CleanName}: {tt.ClassShortName} - {tt.CleanName} has agro and not a tank");
+=======
+                                        _log.Write($"Taunting {s.CleanName}: {tt.ClassShortName} - {tt.CleanName} has agro and not a tank", Logging.LogLevels.Info);
+>>>>>>> Stashed changes
 
                                     }
                                     else if (MQ.Query<bool>("${Me.AltAbilityReady[Divine Stun]}"))
@@ -519,7 +523,11 @@ namespace E3Core.Processors
                 AssistTargetID = mobID;
                 if (MQ.Query<Int32>("${Target.ID}") != AssistTargetID)
                 {
+<<<<<<< Updated upstream
                     MQ.Write("AssistOn Fix TargetID:" + AssistTargetID);
+=======
+                    _log.Write("AssistOn Fix TargetID:" + AssistTargetID, Logging.LogLevels.Info);
+>>>>>>> Stashed changes
                     if (!Casting.TrueTarget(AssistTargetID))
                     {
                         //could not target
