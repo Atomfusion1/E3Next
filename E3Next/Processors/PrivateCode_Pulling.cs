@@ -58,6 +58,7 @@ namespace E3Core.Processors
                     E3.MQ.Delay(50);
                     if (PrivateCode.PullingMode) E3.MQ.Cmd(@"/squelch /face fast nolook");
                     E3.MQ.Cmd(@"/g Assist Me on %t");
+                    MQ.Write("Target Number is " + targetID.ToString());
                     EngagedID = targetID;
                     E3.MQ.Cmd(@"/assistme /all");
                 }
