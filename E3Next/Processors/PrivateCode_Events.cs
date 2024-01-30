@@ -104,7 +104,7 @@ namespace E3Core.Processors
             {
                 if (PrivateCode.PullingMode)
                 {
-                    MQ.Cmd("/squelch /face");
+                    MQ.Cmd("/squelch /face fast nolook");
                 }
             });
         }
