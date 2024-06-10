@@ -207,7 +207,8 @@ namespace E3Core.Processors
         }
         private static void HuntDownMob(int mobID)
         {
-            // Here you can place the logic to hunt down the mob
+            // Here you can place the logic to hunt down the mob 
+            // Future Add Bow
             E3.MQ.Cmd($"/squelch /nav id {mobID} dist=25 log=off");
             E3.MQ.Cmd($"/target id {mobID}");
             E3.MQ.Delay(15000, () => IsMobOnXTarget(mobID));
@@ -312,7 +313,7 @@ namespace E3Core.Processors
                         E3.MQ.Cmd("/looton");
                         PrivateCode.GroupCampMember = x.args[1];
                         string ZoneName = MQ.Query<string>("${Zone.Name}");
-                        PrivateCode.ReadINI("e3 Private/MobPulling.ini", ZoneName);
+                        PrivateCode.ReadINI("e3 Private\\MobPulling.ini", ZoneName);
                         double MathRadius = PrivateCode.MobInformation.PullDistance * 1.3;
                         PrivateCode.PCNear = MQ.Query<Int32>($"${{SpawnCount[PC radius {MathRadius}]}}");
                         MQ.Write("How Many PC Near me " + PrivateCode.PCNear.ToString());

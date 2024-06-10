@@ -37,6 +37,7 @@ namespace E3Core.Processors
             RegisterCommandAlwaysLoot();
             RegisterCommandE3NextHelp();
             RegisterCommandMezUp();
+            RegisterCommandAddTargetToMobList(); // Register the new command
         }
         private static IMQ MQ = E3.MQ;
         private static void LoadCommandStartup() // Load in Variables from INI file then run command 
@@ -224,5 +225,62 @@ namespace E3Core.Processors
                 }
             });
         }
+        private static void RegisterCommandAddTargetToMobList()
+        {
+            EventProcessor.RegisterCommand("/AddTargetToMobList", (x) =>
+            {
+                string targetName = MQ.Query<string>("${Target.CleanName}");
+                if (string.IsNullOrEmpty(targetName))
+                {
+                    MQ.Write("\arNo target selected or target name is invalid.");
+                    return;
+                }
+
+                string iniFilePath = BaseSettings.GetSettingsFilePath("pullingmob.ini");
+                string sectionName = "The Plane of Nightmares"; // Adjust the section name as needed
+
+                IniParser.FileIniDataParser parser = e3util.CreateIniParser();
+                IniData iniData;
+
+                if (File.Exists(iniFilePath))
+                {
+                    iniData = parser.ReadFile(iniFilePath);
+                }
+                else
+                {
+                    iniData = new IniData();
+                }
+
+                if (!iniData.Sections.ContainsSection(sectionName))
+                {
+                    iniData.Sections.AddSection(sectionName);
+                }
+
+                var section = iniData[sectionName];
+                string currentMobValue = section["Mob"];
+
+                if (currentMobValue == "Ignore Mob Name")
+                {
+                    currentMobValue = string.Empty;
+                }
+
+                List<string> mobList = new List<string>(currentMobValue.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+
+                if (!mobList.Contains(targetName))
+                {
+                    mobList.Add(targetName);
+                    section["Mob"] = string.Join(",", mobList);
+                    MQ.Write($"\agAdded target \ay{targetName}\ag to pullingmob.ini under section \ay{sectionName}\ag, key \ayMob\ag.");
+                }
+                else
+                {
+                    MQ.Write($"\ayTarget {targetName} is already in the Mob list.");
+                }
+
+                parser.WriteFile(iniFilePath, iniData);
+            });
+        }
+
+
     }
 }

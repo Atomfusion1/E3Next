@@ -178,11 +178,11 @@ namespace E3Core.Processors
             }
             else
             {
-                MQ.Write("File Not Found");
+                MQ.Write("\arFile Not Found");
+                MQ.Write("\arLocation Expected " + filename);
+                MQ.Write("\ayAdd Foler \"e3 private\" to e3 macro inis with file MobPulling.ini in it");
             }
         }
-
-
 
         // Not used yet will need to write INI 
         private static void WriteINI(string FileName, string SectionName)
