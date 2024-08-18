@@ -70,7 +70,7 @@ namespace E3Core.Processors
             }
 
 
-        public static void ListRegisteredCommands() {
+/*        public static void ListRegisteredCommands() {
             MQ.Write("Registered Commands:");
             var sortedCommands = EventProcessor.CommandList.Keys.OrderBy(key => key).ToList();
             const int spacing = 10;
@@ -85,7 +85,7 @@ namespace E3Core.Processors
                 }
             }
             MQ.Write("End of registered commands list.");
-        }
+        }*/
 
         private static void RegisterCommandAlwaysLoot() {
             EventProcessor.RegisterCommand("/alwaysloot", (x) => {
@@ -157,7 +157,7 @@ namespace E3Core.Processors
                         PlayTone(frequencies[i], durations[i]);
                     }
                 }
-                if (commands.Equals("Spells", StringComparison.OrdinalIgnoreCase)) {
+/*                if (commands.Equals("Spells", StringComparison.OrdinalIgnoreCase)) {
                     if (x.args.Count > 1) {
                         Spell.DisplaySpellOptions(x.args[1]);  // pass the next argument as the filter
                     }
@@ -165,12 +165,12 @@ namespace E3Core.Processors
                         Spell.DisplaySpellOptions();
                     }
                     return;
-                }
-                if (commands.Equals("Commands", StringComparison.OrdinalIgnoreCase)) {
+                }*/
+/*                if (commands.Equals("Commands", StringComparison.OrdinalIgnoreCase)) {
                     MQ.Write("\ay List of Commands");
                     ListRegisteredCommands();
                     return;
-                }
+                }*/
             });
         }
 
