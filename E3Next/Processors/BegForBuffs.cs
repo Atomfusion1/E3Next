@@ -35,7 +35,7 @@ namespace E3Core.Processors
         private static SpellAliasDataFile _spellAliasesDataFile = new SpellAliasDataFile();
         public static Dictionary<string, string> SpellAliases;
         [SubSystemInit]
-        public static void Init()
+        public static void BegForBuffs_Init()
         {
             RegsterEvents();
             _spellAliasesDataFile.LoadData();
@@ -48,45 +48,72 @@ namespace E3Core.Processors
 
             EventProcessor.RegisterEvent("BuffMe", "(.+) tells you, '(?i)buff me'", (x) =>
             {
-                if (x.match.Groups.Count > 1)
+                //disable if on EQ live
+                if (e3util.IsEQLive()) return;
+
+                using(_log.Trace())
                 {
-                    if (Basics.AmIDead()) return;
-                    string user = x.match.Groups[1].Value;
+					_log.Write("Entering Buff Me Method");
+					if (x.match.Groups.Count > 1)
+					{
+						_log.Write("Checking if dead");
 
-             
-                    if (E3.GeneralSettings.BuffRequests_AllowBuffRequests || E3.Bots.IsMyBot(user))
-                    {
-                        Int32 totalQueuedSpells = 0;
-                        if (_spawns.TryByName(user, out var spawn))
-                        {
-                            Casting.TrueTarget(spawn.ID);
-                           
-                            foreach (var spell in E3.CharacterSettings.GroupBuffs)
-                            {
-                                if (!String.IsNullOrWhiteSpace(spell.Ifs))
-                                {
-                                    if (!Casting.Ifs(spell))
-                                    {
-                                        continue;
-                                    }
-                                }
-                                _queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = spawn.ID, Spell = spell});
-                                totalQueuedSpells++;
-                            }
-                            if(totalQueuedSpells > 0)
-                            {
-                                MQ.Cmd($"/t {user} casting buffs on you, please wait.");
-                                E3.Bots.BroadcastCommand($"/buffme {spawn.ID}");
+						if (Basics.AmIDead()) return;
 
-                            }
-                        }
-                    }
-                }
+						_log.Write("Getting User");
+
+						string user = x.match.Groups[1].Value;
+
+                        _log.Write($"user is {user}, checking if we allow buff requetss or if my bot.");
+
+						if (E3.GeneralSettings.BuffRequests_AllowBuffRequests || E3.Bots.IsMyBot(user))
+						{
+
+							Int32 totalQueuedSpells = 0;
+
+                            _log.Write("Checking if a valid spawn");
+                            if (_spawns.TryByName(user, out var spawn))
+							{
+								_log.Write("Valid spawn,issuing true target");
+								Casting.TrueTarget(spawn.ID);
+
+								_log.Write("Looping through group buffs..");
+
+								foreach (var spell in E3.CharacterSettings.GroupBuffs)
+								{
+                                    _log.Write($"Checking spell {spell.CastName}");
+									if (!String.IsNullOrWhiteSpace(spell.Ifs))
+									{
+                                       
+										if (!Casting.Ifs(spell))
+										{
+											continue;
+										}
+									}
+									_log.Write($"enquing spell to be called soon...");
+
+									_queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = spawn.ID, Spell = spell });
+									totalQueuedSpells++;
+								}
+								if (totalQueuedSpells > 0)
+								{
+									MQ.Cmd($"/t {user} casting buffs on you, please wait.");
+									E3.Bots.BroadcastCommand($"/buffme {spawn.CleanName}");
+
+								}
+							}
+						}
+					}
+				}
+               
             });
 
             EventProcessor.RegisterEvent("BuffMyPet", "(.+) tells you, '(?i)buff my pet'", (x) =>
             {
-                if (x.match.Groups.Count > 1)
+				//disable if on EQ live
+				if (e3util.IsEQLive()) return;
+
+				if (x.match.Groups.Count > 1)
                 {
                     if (Basics.AmIDead()) return;
                     string user = x.match.Groups[1].Value;
@@ -118,7 +145,7 @@ namespace E3Core.Processors
                                 if (totalQueuedSpells > 0)
                                 {
                                     MQ.Cmd($"/t {user} casting buffs on your pet, please wait.");
-                                    E3.Bots.BroadcastCommand($"/buffme {petid}");
+                                    E3.Bots.BroadcastCommand($"/buffpet {user}");
                                 }
                                     
                             }
@@ -137,32 +164,60 @@ namespace E3Core.Processors
             {
                 if (x.args.Count > 0)
                 {
-                    if (Int32.TryParse(x.args[0], out var spawnid))
-                    {
-                        foreach (var spell in E3.CharacterSettings.GroupBuffs)
-                        {
-                            if(_spawns.TryByID(spawnid, out var spawn))
-                            {
-								_queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = spawnid, Spell = spell });
-							}
-
+					string spawnid = x.args[0];
+					if (_spawns.TryByName(spawnid, out var spawn))
+					{
+						foreach (var spell in E3.CharacterSettings.GroupBuffs)
+						{
+            				_queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = spawn.ID, Spell = spell });
 						}
-                    }
+					}
                 }
                 else
                 {
-                    
                     foreach (var spell in E3.CharacterSettings.GroupBuffs)
                     {
                         _queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = E3.CurrentId, Spell = spell });
 
                     }
                     
-                    E3.Bots.BroadcastCommand($"/buffme {E3.CurrentId}");
+                    E3.Bots.BroadcastCommand($"/buffme {E3.CurrentName}");
                 }
             });
+			EventProcessor.RegisterCommand("/buffpet", (x) =>
+			{
+				if (x.args.Count > 0)
+				{
+					string spawnid = x.args[0];
+					if (_spawns.TryByName(spawnid, out var spawn))
+					{
+						if (spawn.PetID > 0)
+						{
+							foreach (var spell in E3.CharacterSettings.GroupBuffs)
+							{
+								_queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = spawn.PetID, Spell = spell });
+							}
 
-            EventProcessor.RegisterCommand("/buffit", (x) =>
+						}
+					}
+				}
+				else
+				{
+					if (_spawns.TryByID(E3.CurrentId, out var spawn))
+					{ 
+						foreach (var spell in E3.CharacterSettings.GroupBuffs)
+						{
+
+							_queuedBuffs.Enqueue(new BuffQueuedItem() { TargetID = spawn.PetID, Spell = spell });
+
+						}
+					}
+
+					E3.Bots.BroadcastCommand($"/buffpet {E3.CurrentName}");
+				}
+			});
+
+			EventProcessor.RegisterCommand("/buffit", (x) =>
             {
                 if (x.args.Count > 0)
                 {
@@ -180,7 +235,10 @@ namespace E3Core.Processors
                     int targetid = MQ.Query<int>("${Target.ID}");
                     if(targetid>0)
                     {
-                        E3.Bots.BroadcastCommand($"/buffme {targetid}");
+						if (_spawns.TryByID(targetid, out var spawn))
+						{
+							E3.Bots.BroadcastCommand($"/buffme {spawn.CleanName}");
+						}
 
                     }
                 }
@@ -189,7 +247,10 @@ namespace E3Core.Processors
             var buffBegs = new List<string> { "(.+) tells you, '(.+)'", "(.+) tells the group, '(.+)'" };
             EventProcessor.RegisterEvent("BuffBeg", buffBegs, (x) =>
             {
-                if (x.match.Groups.Count > 2)
+				//disable if on EQ live
+				if (e3util.IsEQLive()) return;
+
+				if (x.match.Groups.Count > 2)
                 {
                     if (Basics.AmIDead()) return;
                     string user = x.match.Groups[1].Value;
@@ -220,9 +281,9 @@ namespace E3Core.Processors
 							}
 							bool inBook = MQ.Query<bool>($"${{Me.Book[{spell}]}}");
 							bool aa = MQ.Query<bool>($"${{Me.AltAbility[{spell}].Spell}}");
-							bool item = MQ.Query<bool>($"${{FindItem[={spell}]}}");
-
-							if (inBook || aa || item)
+                         
+						
+							if (inBook || aa )
 							{
 								if (groupReply)
 								{
@@ -245,7 +306,10 @@ namespace E3Core.Processors
             var raidbuffBeg = new List<string> {"(.+) tells the raid,  '"+E3.CurrentName+@":(.+)'" };
             EventProcessor.RegisterEvent("RaidBuffBeg", raidbuffBeg, (x) =>
             {
-                if (x.match.Groups.Count > 2)
+				//disable if on EQ live
+				if (e3util.IsEQLive()) return;
+
+				if (x.match.Groups.Count > 2)
                 {
                     if (Basics.AmIDead()) return;
                     string user = x.match.Groups[1].Value;
@@ -354,7 +418,7 @@ namespace E3Core.Processors
                 spell = realSpell;
             }
            
-            if(!String.IsNullOrWhiteSpace(user))
+            if(!String.IsNullOrWhiteSpace(user) && user!=E3.CurrentName)
             {
                 MQ.Cmd($"/t {user} I'm queuing up {spell} to use on you, please wait.");
                
@@ -385,7 +449,7 @@ namespace E3Core.Processors
                     }
 
                     //not a valid spell
-                    if (s.CastType==CastType.None)
+                    if (s.CastType==CastingType.None)
                     {
                         _queuedBuffs.Dequeue();
                         return;
@@ -418,8 +482,11 @@ namespace E3Core.Processors
                     {
                         //so we can be sure our cursor was empty before we cast
                         Int32 cursorID = MQ.Query<Int32>("${Cursor.ID}");
-                     
-                        var result = Casting.Cast(spawn.ID, s, Heals.SomeoneNeedsHealing);
+
+					recast:
+						var result = Casting.Cast(spawn.ID, s, Heals.SomeoneNeedsHealing);
+						if (result == CastReturn.CAST_FIZZLE) goto recast;
+
                         if (result == CastReturn.CAST_INTERRUPTFORHEAL)
                         {
                             return;

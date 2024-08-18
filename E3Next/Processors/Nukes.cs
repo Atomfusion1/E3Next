@@ -19,16 +19,16 @@ namespace E3Core.Processors
         private static Double _stunDelayTimeStamp;
         private static Double _pbaeDelayTimeStamp;
 
-
-        public static bool PBAEEnabled = false;
+		[ExposedData("Nukes", "PBAEEnabled")]
+		public static bool PBAEEnabled = false;
 
         public static void Reset()
         {
             PBAEEnabled = false;
         }
 
-        [SubSystemInit()]
-        public static void Init()
+        [SubSystemInit]
+        public static void Nukes_Init()
         {
             RegisterEvents();
         }

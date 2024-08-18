@@ -18,14 +18,16 @@ namespace E3Core.Processors
     {
         public static Logging _log = E3.Log;
         private static IMQ MQ = E3.MQ;
-        private static bool _petMaxShrink = false;
+		[ExposedData("Pets", "PetMaxShrink")]
+		private static bool _petMaxShrink = false;
         private static Int32 _petMaxShrinkID = 0;
         private static Int64 _nextPetCheck = 0;
         private static Int64 _nextPetCheckInterval = 1000;
-        private static List<string> _petShrinkSpells = new List<string>() { "Diminutive Companion", "Gemstone of Dark Flame", "Symbol of Ancient Summoning", "Tiny Companion",  };
+		[ExposedData("Pets", "PetShrinkSpells")]
+		private static List<string> _petShrinkSpells = new List<string>() { "Diminutive Companion", "Gemstone of Dark Flame", "Symbol of Ancient Summoning", "Tiny Companion",  };
 
         [SubSystemInit]
-        public static void Init()
+        public static void Pets_Init()
         {
             RegisterEvents();
         }
@@ -55,7 +57,7 @@ namespace E3Core.Processors
             {
                 CheckPetHeal(petId);
                 CheckPetShrink(petId);
-
+                CheckPetBuffs();
             }
 
 			if (Basics.InCombat() && !E3.CharacterSettings.Pet_SummonCombat)
@@ -63,13 +65,32 @@ namespace E3Core.Processors
 				return;
 			}
 			if (petId<1)
-			{
-				
+			{	
 				CheckPetSummon(ref petId);
-
 			}
-
 		}
+
+        public static void removeBuffsIfNecessary(List<Spell> buffs) {
+            foreach (var buff in buffs) {
+		if (!String.IsNullOrWhiteSpace(buff.Ifs))
+                {
+                    if (!Casting.Ifs(buff.Ifs))
+                    {
+                        continue;
+                    }
+                }
+                var buffIndex = MQ.Query<int>($"${{Me.Pet.Buff[{buff.SpellName}]}}");
+                if (buffIndex > 0)
+                {
+                    MQ.Cmd($"/removebuff -pet {buff.SpellName}");
+                }
+            }
+        }
+
+        private static void CheckPetBuffs()
+        {
+            Pets.removeBuffsIfNecessary(E3.CharacterSettings.BlockedPetBuffs);
+        }
 
         private static void CheckPetSummon(ref Int32 petID)
         {
@@ -101,7 +122,8 @@ namespace E3Core.Processors
                     petID = MQ.Query<Int32>("${Me.Pet.ID}");
                     if (petID > 0)
                     {
-                        MQ.Cmd("/squelch /pet ghold on");
+						MQ.Cmd("/squelch /pet hold on");
+						MQ.Cmd("/squelch /pet ghold on");
                     }
                 }
               
@@ -162,7 +184,7 @@ namespace E3Core.Processors
                     {
                         s = new Spell(spellName);
                     }
-                    if (s.SpellID > 0 && s.CastType != CastType.None)
+                    if (s.SpellID > 0 && s.CastType != CastingType.None)
                     {
                         Casting.Cast(petID, s);
                         MQ.Delay(300);

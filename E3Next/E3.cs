@@ -24,63 +24,67 @@ namespace E3Core.Processors
     /// </summary>
     public static class E3
 	{
+		public static bool _amIDead = false;
 		/// <summary>
 		/// The main processing loop. Things are broken up to keep this loop small and understandable.
 		/// </summary>
 		public static void Process()
-        {
-
-            if (!ShouldRun())
-            {
-                return;
-            }
+		{
+			_amIDead = Basics.AmIDead();
+			if (!ShouldRun())
+			{
+				return;
+			}
 			//Init is here to make sure we only Init while InGame, as some queries will fail if not in game
 			if (!IsInit) { Init(); }
 			var sw = new Stopwatch();
 			sw.Start();
 			//auto 5 min gc check
 			CheckGC();
-			WriteToConsoleAndResetStopwatch(sw, "CheckGC");
+
+			//did someone send us a command? lets process it. 
+			ProcessExternalCommands();
+
 			//update all states, important.
 			StateUpdates();
-            WriteToConsoleAndResetStopwatch(sw, "StateUpdates");
-            RefreshCaches();
-            WriteToConsoleAndResetStopwatch(sw, "RefreshCaches");
+			RefreshCaches();
 
-            //kickout after updates if paused
-            if (IsPaused()) return;
+			//kickout after updates if paused
+			if (IsPaused()) return;
+			//stunned, no sense in processing
+			if (MQ.Query<bool>("${Me.Stunned}")) return;
+			if (MQ.Query<Int32>("${Me.CurrentHPs}") < 1) return; //we are dead
+			if (MQ.Query<bool>("${Me.Feigning}") && E3.CharacterSettings.IfFDStayDown) return;
+
 
 			//global action taken key, used by adv settings
 			//if true, adv settings will stop processing for this loop.
-            ActionTaken = false;
-         
-			
-            BeforeAdvancedSettingsCalls();
-            WriteToConsoleAndResetStopwatch(sw, "BeforeAdvancedSettingsCalls");
-            if (!ActionTaken)
+			ActionTaken = false;
+			BeforeAdvancedSettingsCalls();
+
+			if (!_amIDead)
 			{
-				//All the advanced Ini stuff here
-				AdvancedSettingsCalls();
-                WriteToConsoleAndResetStopwatch(sw, "AdvancedSettingsCalls");
-            }
-            AfterAdvancedSettingsCalls();
-            WriteToConsoleAndResetStopwatch(sw, "AfterAdvancedSettingsCalls");
+				if (!ActionTaken)
+				{
+					//All the advanced Ini stuff here
+					AdvancedSettingsCalls();
+				}
+				AfterAdvancedSettingsCalls();
 
-            //attribute class calls
-            ClassMethodCalls();
-            WriteToConsoleAndResetStopwatch(sw, "ClassMethodCalls");
+				//attribute class calls
+				ClassMethodCalls();
+			}
+			else
+			{
+				//follow/rez/etc
+				ClassMethodCalls();
+			}
 
+			
             //final cleanup/actions after the main loop has done processing
             FinalCalls();
-            WriteToConsoleAndResetStopwatch(sw, "FinalCalls");
         }
-
-		private static void WriteToConsoleAndResetStopwatch(Stopwatch sw, string method)
-		{
-			Console.WriteLine($"it took {sw.ElapsedMilliseconds}ms to execute {method}");
-			sw.Restart();
-		}
-		
+	
 		private static void BeforeAdvancedSettingsCalls()
 		{
 			if (PctHPs < 98)
@@ -90,24 +94,26 @@ namespace E3Core.Processors
 			//nowcast before all.
 			EventProcessor.ProcessEventsInQueues("/nowcast");
 			EventProcessor.ProcessEventsInQueues("/backoff");
-			//use burns if able, this is high as some heals need burns as well
-			Burns.UseBurns();
-			//do the basics first
-			//first and formost, do healing checks
-			if ((CurrentClass & Data.Class.Priest) == CurrentClass)
+			EventProcessor.ProcessEventsInQueues("/assistme");
+
+			if (!_amIDead)
 			{
-				ActionTaken = false;
-				Heals.Check_Heals();
-				Basics.CheckManaResources();
-				if (ActionTaken) return; //we did a heal, kick out as we may need to do another heal.
+				//use burns if able, this is high as some heals need burns as well
+				Burns.UseBurns();
+				//do the basics first
+				//first and formost, do healing checks
+				if ((CurrentClass & Data.Class.Priest) == CurrentClass)
+				{
+					ActionTaken = false;
+					Heals.Check_Heals();
+					Basics.CheckManaResources();
+					if (ActionTaken) return; //we did a heal, kick out as we may need to do another heal.
+				}
+				//instant buffs have their own shouldcheck, need it snappy so check quickly.
+				BuffCheck.BuffInstant(E3.CharacterSettings.InstantBuffs);
+				Assist.Process();
 			}
-
-			//instant buffs have their own shouldcheck, need it snappy so check quickly.
-			BuffCheck.BuffInstant(E3.CharacterSettings.InstantBuffs);
-
 			Rez.Process();
-			if (Basics.AmIDead()) return;
-			Assist.Process();
 
 		}
 		private static void AdvancedSettingsCalls()
@@ -120,36 +126,21 @@ namespace E3Core.Processors
 				{
 					foreach (var methodName in _methodsToInvokeAsStrings)
 					{
-						//using (Log.Trace($"{methodName}-Burns"))
+						Burns.UseBurns();
+						//if an action was taken, start over
+						if (ActionTaken)
 						{
-							Burns.UseBurns();
-
+							break;
 						}
-
-						//using (Log.Trace($"{methodName}-Main"))
+						Action methodToInvoke;
+						if (AdvancedSettings.MethodLookup.TryGetValue(methodName, out methodToInvoke))
 						{
-							//if an action was taken, start over
-							if (ActionTaken)
-							{
-								break;
-							}
-							Action methodToInvoke;
-							if (AdvancedSettings.MethodLookup.TryGetValue(methodName, out methodToInvoke))
-							{
-								methodToInvoke.Invoke();
-
-							}
+							methodToInvoke.Invoke();
 						}
-
 						//check backoff
 						//check nowcast
-						//using (Log.Trace($"{methodName}-CheckQueues"))
-						{
-							EventProcessor.ProcessEventsInQueues("/nowcast");
-							EventProcessor.ProcessEventsInQueues("/backoff");
-
-						}
-
+						EventProcessor.ProcessEventsInQueues("/nowcast");
+						EventProcessor.ProcessEventsInQueues("/backoff");
 					}
 				}
 			}
@@ -158,6 +149,8 @@ namespace E3Core.Processors
 		private static void AfterAdvancedSettingsCalls()
 		{
 			EventProcessor.ProcessEventsInQueues("/backoff");
+			EventProcessor.ProcessEventsInQueues("/assistme");
+
 			Assist.Process();
 
 			//process any requests commands from the UI.
@@ -166,6 +159,7 @@ namespace E3Core.Processors
 			//bard song player
 			if (E3.CurrentClass == Data.Class.Bard)
 			{
+				Bard.Check_AutoMez();
 				Bard.check_BardSongs();
 			}
 		}
@@ -190,6 +184,7 @@ namespace E3Core.Processors
 					}
 					EventProcessor.ProcessEventsInQueues("/nowcast");
 					EventProcessor.ProcessEventsInQueues("/backoff");
+					EventProcessor.ProcessEventsInQueues("/assistme");
 				}
 				//e3util.PutOriginalTargetBackIfNeeded(orgTargetID);
 			}
@@ -198,12 +193,18 @@ namespace E3Core.Processors
 		}
 		private static void FinalCalls()
 		{
-			using (Log.Trace("LootProcessing"))
+
+
+			if(!_amIDead)
 			{
-				Loot.Process();
+				using (Log.Trace("LootProcessing"))
+				{
+					Loot.Process();
+				}
+				//instant buffs have their own shouldcheck, need it snappy so check quickly.
+				BuffCheck.BuffInstant(E3.CharacterSettings.InstantBuffs);
+
 			}
-			//instant buffs have their own shouldcheck, need it snappy so check quickly.
-			BuffCheck.BuffInstant(E3.CharacterSettings.InstantBuffs);
 
 			//were modifications made to the settings files?
 			CheckModifiedSettings();
@@ -212,7 +213,18 @@ namespace E3Core.Processors
         {
             if (!e3util.ShouldCheck(ref _nextReloadSettingsCheck, _nextReloadSettingsInterval)) return;
 
-            if (CharacterSettings.ShouldReload())
+
+			if (GlobalIfs.ShouldReload())
+			{
+				E3.Bots.Broadcast("\aoAuto-Reloading Global Ifs/Character settings settings file...");
+				E3.GlobalIfs = new GlobalIfs();
+				CharacterSettings = new CharacterSettings();
+				Loot.Reset();
+				GiveMe.Reset();
+				Bard.RestartMelody();
+				E3.Bots.Broadcast("\aoComplete!");
+			}
+			else if (CharacterSettings.ShouldReload())
             {
                 E3.Bots.Broadcast("\aoAuto-Reloading Character settings file...");
                 CharacterSettings = new CharacterSettings();
@@ -222,6 +234,7 @@ namespace E3Core.Processors
                 E3.Bots.Broadcast("\aoComplete!");
                
             }
+			
             if (GeneralSettings.ShouldReload())
             {
                 E3.Bots.Broadcast("\aoAuto-Reloading General settings file...");
@@ -236,7 +249,13 @@ namespace E3Core.Processors
                 Zoning.TributeDataFile.ToggleTribute();
                 E3.Bots.Broadcast("\aoComplete!");
             }
-        }
+			if (Loot.LootStackableSettings.ShouldReload())
+			{
+				E3.Bots.Broadcast("\aoAuto-Reloading Loot Stackable Settings...");
+				Loot.LootStackableSettings.LoadData();
+				E3.Bots.Broadcast("\aoComplete!");
+			}
+		}
        
 		public static bool IsPaused()
         {
@@ -255,75 +274,136 @@ namespace E3Core.Processors
 		/// </summary>
 		/// 
 		private static Int64 _nextStateUpdateCheckTime = 0;
-		private static Int64 _nextStateUpdateTimeInterval = 50;
-
+		//needs to be fast to be able to show a new buff has landed
 		private static Int64 _nextBuffUpdateCheckTime = 0;
-		private static Int64 _nextBuffUpdateTimeInterval = 1000;
+		private static Int64 _nextSlowUpdateCheckTime = 0;
+		private static Int64 _nextMiscUpdateCheckTime = 0;
+		private static Int64 _MiscUpdateCheckRate = 100;
+	
+		//qick hack to prevent calling state update... while in state updates. 
+		public static bool InStateUpdate = false;
 
-
-        //qick hack to prevent calling state update... while in state updates. 
-        public static bool InStateUpdate = false;
+		public static void StateUpdates_Counters()
+		{
+			
+			PubServer.AddTopicMessage("${Me.TotalCounters}", MQ.Query<string>("${Debuff.Count}"));
+			PubServer.AddTopicMessage("${Me.CountersPoison}", MQ.Query<string>("${Debuff.Poisoned}"));
+			PubServer.AddTopicMessage("${Me.CountersDisease}", MQ.Query<string>("${Debuff.Diseased}"));
+			PubServer.AddTopicMessage("${Me.CountersCurse}", MQ.Query<string>("${Debuff.Cursed}"));
+			PubServer.AddTopicMessage("${Me.CountersCorrupted}", MQ.Query<string>("${Debuff.Corrupted}"));
+			
+		}
+		public static void StateUpdates_Misc()
+		{
+			PubServer.AddTopicMessage("${InCombat}", CurrentInCombat.ToString());
+			PubServer.AddTopicMessage("${EQ.CurrentFocusedWindowName}", MQ.GetFocusedWindowName());
+			PubServer.AddTopicMessage("${Me.CurrentTargetID}", MQ.Query<string>("${Target.ID}"));
+		}
+		public static void StateUpdates_Stats()
+		{
+			PubServer.AddTopicMessage("${Me.PctMana}", MQ.Query<string>("${Me.PctMana}"));
+			PubServer.AddTopicMessage("${Me.PctEndurance}", MQ.Query<string>("${Me.PctEndurance}"));
+			PubServer.AddTopicMessage("${Me.PctHPs}", PctHPs.ToString());
+			PubServer.AddTopicMessage("${Me.CurrentHPs}", MQ.Query<string>("${Me.CurrentHPs}"));
+			PubServer.AddTopicMessage("${Me.CurrentMana}", MQ.Query<string>("${Me.CurrentMana}"));
+			PubServer.AddTopicMessage("${Me.CurrentEndurance}", MQ.Query<string>("${Me.CurrentEndurance}"));
+		}
+		public static void StateUpdates_BuffInformation()
+		{
+			PubServer.AddTopicMessage("${Me.BuffInfo}", e3util.GenerateBuffInfoForPubSub());
+			PubServer.AddTopicMessage("${Me.PetBuffInfo}", e3util.GeneratePetBuffInfoForPubSub());
+		}
+		public static void StateUpdates_AAInformation()
+		{
+			PubServer.AddTopicMessage("${Me.AAPoints}", MQ.Query<string>("${Me.AAPoints}"));
+			PubServer.AddTopicMessage("${Me.AAPointsAssigned}", MQ.Query<string>("${Me.AAPointsAssigned}"));
+			PubServer.AddTopicMessage("${Me.AAPointsSpent}", MQ.Query<string>("${Me.AAPointsSpent}"));
+			PubServer.AddTopicMessage("${Me.AAPointsTotal}", MQ.Query<string>("${Me.AAPointsTotal}"));
+		}
+		public static void ProcessExternalCommands()
+		{
+			NetMQServer.SharedDataClient.ProcessCommands(); //recieving data
+			NetMQServer.SharedDataClient.ProcessE3BCCommands();//sending out data
+															   //process any tlo request from the UI, or anything really.
+			RouterServer.ProcessRequests();
+			//process any commands we need to process from the UI
+			PubClient.ProcessRequests();
+		}
 		public static void StateUpdates()
         {
-           
-            try
-            {
-                InStateUpdate = true;
-				NetMQServer.SharedDataClient.ProcessCommands(); //recieving data
-				NetMQServer.SharedDataClient.ProcessE3BCCommands();//sending out data
 
-				if (e3util.ShouldCheck(ref _nextBuffUpdateCheckTime, _nextBuffUpdateTimeInterval))
-				{
-					PubServer.AddTopicMessage("${Me.BuffInfo}", e3util.GenerateBuffInfoForPubSub());
-					PubServer.AddTopicMessage("${Me.PetBuffInfo}", e3util.GeneratePetBuffInfoForPubSub());
-				}
-
-				if (!e3util.ShouldCheck(ref _nextStateUpdateCheckTime, _nextStateUpdateTimeInterval)) return;
+			try
+			{
+				//this is important so that we do not get caught up in recursion during a Delay as delay can call this. 
+				InStateUpdate = true;
 				PctHPs = MQ.Query<int>("${Me.PctHPs}");
-				//cure counters
-				PubServer.AddTopicMessage("${Me.TotalCounters}", MQ.Query<string>("${Debuff.Count}"));
-				PubServer.AddTopicMessage("${Me.CountersPoison}", MQ.Query<string>("${Debuff.Poisoned}"));
-				PubServer.AddTopicMessage("${Me.CountersDisease}", MQ.Query<string>("${Debuff.Diseased}"));
-				PubServer.AddTopicMessage("${Me.CountersCurse}", MQ.Query<string>("${Debuff.Cursed}"));
-				PubServer.AddTopicMessage("${Me.CountersCorrupted}", MQ.Query<string>("${Debuff.Corrupted}"));
-				//end cure counters
-				PubServer.AddTopicMessage("${Me.PctMana}", MQ.Query<string>("${Me.PctMana}"));
-				PubServer.AddTopicMessage("${Me.PctEndurance}", MQ.Query<string>("${Me.PctEndurance}"));
-				PubServer.AddTopicMessage("${Me.PctHPs}", PctHPs.ToString());
-				PubServer.AddTopicMessage("${Me.CurrentHPs}", MQ.Query<string>("${Me.CurrentHPs}"));
-				PubServer.AddTopicMessage("${Me.CurrentMana}", MQ.Query<string>("${Me.CurrentMana}"));
-				PubServer.AddTopicMessage("${Me.CurrentEndurance}", MQ.Query<string>("${Me.CurrentEndurance}"));
-		
 				IsInvis = MQ.Query<bool>("${Me.Invis}");
-			
 				CurrentId = MQ.Query<int>("${Me.ID}");
 				CurrentInCombat = Basics.InCombat();
-				PubServer.AddTopicMessage("${InCombat}", CurrentInCombat.ToString());
-				PubServer.AddTopicMessage("${EQ.CurrentFocusedWindowName}", MQ.GetFocusedWindowName());
 
-				string nameOfPet = MQ.Query<string>("${Me.Pet.CleanName}");
-				if (nameOfPet != "NULL")
+				//hp, mana, counters, etc, should send out quickly, but no more than say 50 milliseconds
+				if (e3util.ShouldCheck(ref _nextStateUpdateCheckTime, E3.CharacterSettings.CPU_PublishStateDataInMS))
 				{
-					//set the pet name
-					CurrentPetName = nameOfPet;
-					PubServer.AddTopicMessage("${Me.Pet.CleanName}", CurrentPetName);
+					StateUpdates_Stats();
+				}
+				//other stuff not quite so quickly
+				if (e3util.ShouldCheck(ref _nextMiscUpdateCheckTime, _MiscUpdateCheckRate))
+				{
+					StateUpdates_Misc();
+				}
+				//expensive only send out once per second?
+				if (e3util.ShouldCheck(ref _nextBuffUpdateCheckTime, E3.CharacterSettings.CPU_PublishBuffDataInMS))
+				{
+					StateUpdates_BuffInformation();
+					StateUpdates_Counters();
+				}
+				
+				//not horribly important stuff, can just be sent out whever, currently once per second
+				if (e3util.ShouldCheck(ref _nextSlowUpdateCheckTime, E3.CharacterSettings.CPU_PublishSlowDataInMS))
+				{
+					StateUpdates_AAInformation();
+					//lets query the data we are configured to send out extra
+					if (E3.CharacterSettings.E3BotsPublishData.Count > 0)
+					{
+						foreach (var pair in E3.CharacterSettings.E3BotsPublishData)
+						{
+							//to parse out custom values
+							string valueToCheck = Casting.Ifs_Results(pair.Value);
+							string resultvalue= MQ.Query<string>(valueToCheck);
+							PubServer.AddTopicMessage(pair.Key, resultvalue);
+						}
+					}
+					string nameOfPet = MQ.Query<string>("${Me.Pet.CleanName}");
+					if (nameOfPet != "NULL")
+					{
+						//set the pet name
+						CurrentPetName = nameOfPet;
+						PubServer.AddTopicMessage("${Me.Pet.CleanName}", CurrentPetName);
+					}
+					string nameOfMerc = MQ.Query<string>("${Mercenary.CleanName}");
+					if (nameOfMerc != "NULL")
+					{
+						//set the pet name
+						CurrentMercName = nameOfMerc;
+						PubServer.AddTopicMessage("${Mercenary.CleanName}", CurrentMercName);
+					}
+					bool IsMoving = MQ.Query<bool>("${Me.Moving}");
+					if (IsMoving)
+					{
+						LastMovementTimeStamp = Core.StopWatch.ElapsedMilliseconds;
+					}
+
+					if (MQ.Query<bool>("${MoveUtils.GM}"))
+					{
+						if (e3util.IsEQEMU())
+						{
+							MQ.Cmd("/squelch /stick imsafe");
+						}
+						Bots.Broadcast("GM Safe kicked in, on live issue /stick imsafe.  you may need to reissue /followme or /assiston");
+					}
 				}
 
-				bool IsMoving = MQ.Query<bool>("${Me.Moving}");
-				if (IsMoving)
-				{
-					LastMovementTimeStamp = Core.StopWatch.ElapsedMilliseconds;
-				}
-				if (MQ.Query<bool>("${MoveUtils.GM}"))
-				{
-					MQ.Cmd("/squelch /stick imsafe");
-					Bots.Broadcast("GM Safe kicked in, issued /stick imsafe.  you may need to reissue /followme or /assiston");
-				}
-
-				//process any tlo request from the UI, or anything really.
-				RouterServer.ProcessRequests();
-				//process any commands we need to process from the UI
-				PubClient.ProcessRequests();
+			
 			}
             finally
             {
@@ -337,6 +417,17 @@ namespace E3Core.Processors
             Casting.RefreshGemCache();
             Basics.RefreshGroupMembers();
         }
+		public static void ReInit()
+		{
+			string classValue = e3util.ClassNameFix(MQ.Query<string>("${Me.Class}"));
+			Enum.TryParse(classValue, out CurrentClass);
+			CurrentLongClassString = CurrentClass.ToString();
+			CurrentShortClassString = Data.Classes.ClassLongToShort[CurrentLongClassString];
+			if(e3util.IsEQLive())
+			{
+				e3util.MobMaxDebuffSlots = 200;
+			}
+		}
         private static void Init()
         {
 
@@ -344,8 +435,12 @@ namespace E3Core.Processors
             {
                 MQ.ClearCommands();
                 AsyncIO.ForceDotNet.Force();
-
-                Logging.TraceLogLevel = Logging.LogLevels.None; //log level we are currently at
+				if (e3util.IsEQLive())
+				{
+					e3util.MobMaxDebuffSlots = 200;
+					e3util.XtargetMax = 20;
+				}
+				Logging.TraceLogLevel = Logging.LogLevels.None; //log level we are currently at
                 Logging.MinLogLevelTolog = Logging.LogLevels.Error; //log levels have integers assoicatd to them. you can set this to Error to only log errors. 
                 Logging.DefaultLogLevel = Logging.LogLevels.Debug; //the default if a level is not passed into the _log.write statement. useful to hide/show things.
                 MainProcessor.ApplicationName = "E3"; //application name, used in some outputs
@@ -383,6 +478,7 @@ namespace E3Core.Processors
                     //    Bots = new Bots();
                     //}
                 }
+				GlobalIfs = new GlobalIfs();
 				CharacterSettings = new Settings.CharacterSettings();
                 AdvancedSettings = new Settings.AdvancedSettings();
 				
@@ -436,24 +532,27 @@ namespace E3Core.Processors
         public static bool ActionTaken = false;
         public static bool Following = false;
         public static long StartTimeStamp;
-        public static bool IsInit = false;
-        public static bool IsBadState = false;
+		[ExposedData("Core", "IsInit")]
+		public static bool IsInit = false;
+		public static bool IsBadState = false;
         public static IMQ MQ = Core.mqInstance;
         public static Logging Log = Core.logInstance;
         public static Settings.CharacterSettings CharacterSettings = null;
-        public static Settings.GeneralSettings GeneralSettings = null;
+		public static Settings.FeatureSettings.GlobalIfs GlobalIfs = null;
+		public static Settings.GeneralSettings GeneralSettings = null;
         public static Settings.AdvancedSettings AdvancedSettings = null;
         public static IBots Bots = null;
         public static string CurrentName;
         public static Data.Class CurrentClass;
         public static string ServerName;
         public static string CurrentPetName = String.Empty;
+		public static string CurrentMercName = String.Empty;
         public static bool CurrentInCombat = false;
         public static int CurrentId;
         public static Int64 LastMovementTimeStamp;
         public static string CurrentLongClassString;
         public static string CurrentShortClassString;
-
+		public static System.Random Random = new System.Random();
 		public static int PctHPs;
         public static ISpawns Spawns = Core.spawnInstance;
         public static bool IsInvis;
@@ -465,7 +564,15 @@ namespace E3Core.Processors
 		public volatile static bool NetMQ_RouterServerThradRun = true;
 		public volatile static bool NetMQ_PubClientThradRun = true;
 
+		public static MQBuild MQBuildVersion = MQBuild.EMU;
 
 
+	}
+	public enum MQBuild
+	{
+		Live=1,
+		Test=2,
+		Beta=3,
+		EMU=4
 	}
 }

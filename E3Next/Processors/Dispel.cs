@@ -15,7 +15,8 @@ namespace E3Core.Processors
         private static IMQ MQ = E3.MQ;
         private static ISpawns _spawns = E3.Spawns;
         private static Int64 _nextDispelCheck = 0;
-        private static Int64 _nextDispelCheckInterval = 500;
+		[ExposedData("Dispel", "DispelCheckInterval")]
+		private static Int64 _nextDispelCheckInterval = 500;
         
 
         [ClassInvoke(Data.Class.All)]
@@ -33,13 +34,11 @@ namespace E3Core.Processors
                 if (MQ.Query<bool>("${Target.Beneficial.ID}"))
                 {
                     Int32 buffCount=55;
-                  
                     for (Int32 i = 1; i <= buffCount; i++)
                     {
                         bool beneficial = MQ.Query<bool>($"${{Target.Buff[{i}].Beneficial}}");
                         if (beneficial)
                         {
-
                             if (MQ.FeatureEnabled(MQFeature.TLO_Dispellable))
                             {
                                 bool buffDispellable = MQ.Query<bool>($"${{Target.Buff[{i}].Dispellable}}");
@@ -63,7 +62,6 @@ namespace E3Core.Processors
                                 }
                             }
                             if (!beneficial) continue;
-
                          
                             if (beneficial)
                             {
@@ -76,15 +74,11 @@ namespace E3Core.Processors
                                         return;
                                     }
                                 }
-
                             }
                         }
                     }
-
                 }
-
             }
-
         }
     }
 }

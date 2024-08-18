@@ -18,12 +18,17 @@ namespace E3Core.Processors
         private static IMQ MQ = E3.MQ;
         private static ISpawns _spawns = E3.Spawns;
 
-        public static bool Enabled = false;
-        public static Int32 MobToAttack = 0;
-        public static bool FaceTarget = false;
+		[ExposedData("ClearXTargets", "Enabled")]
+		public static bool Enabled = false;
+		[ExposedData("ClearXTargets", "MobToAttack")]
+		public static Int32 MobToAttack = 0;
+		[ExposedData("ClearXTargets", "FaceTarget")]
+		public static bool FaceTarget = false;
         public static List<string> Filters = new List<string>();
-        public static bool HasAllFlag = false;
-        public static bool StickTarget = false;
+		[ExposedData("ClearXTargets", "HasAllFlag")]
+		public static bool HasAllFlag = false;
+		[ExposedData("ClearXTargets", "StickTarget")]
+		public static bool StickTarget = false;
 
         [ClassInvoke(Data.Class.All)]
         public static void Check_Xtargets()
@@ -81,14 +86,28 @@ namespace E3Core.Processors
                             Assist.AssistOn(s.ID, Zoning.CurrentZone.Id);
                             if (FaceTarget)
                             {
-                                MQ.Cmd("/squelch /face fast");
+                                if(e3util.IsEQLive())
+                                {
+									MQ.Cmd("/face",500);
+								}
+                                else
+                                {
+									MQ.Cmd("/face fast");
+								}
+                               
                             }
                             if (StickTarget)
                             {
-                                MQ.Cmd($"/squelch /stick {E3.CharacterSettings.Assist_MeleeStickPoint} {E3.CharacterSettings.Assist_MeleeDistance}");
+                              
+
+
+
+								//MQ.Write($"Setting stick with :/squelch /stick {E3.CharacterSettings.Assist_MeleeStickPoint} {Assist._assistDistance}");
+                                MQ.Cmd($"/squelch /stick {E3.CharacterSettings.Assist_MeleeStickPoint} {Assist._assistDistance}");
                             }
                             MQ.Delay(500);
 
+                            MQ.Cmd("/attack on");
                             if(HasAllFlag)
                             {
                                 if (Filters.Count > 0)

@@ -28,7 +28,8 @@ namespace E3Core.Server
         public static Int32 PubPort;
         public static Int32 PubClientPort;
         public static Process UIProcess;
-        public static Process DiscordProcess;
+		public static Process ConfigProcess;
+		public static Process DiscordProcess;
         private static IMQ MQ = E3.MQ;
 
         
@@ -55,22 +56,15 @@ namespace E3Core.Server
             _pubServer.Start(PubPort);
             _routerServer.Start(RouterPort);
             _pubClient.Start(PubClientPort);
-			
-
-			EventProcessor.RegisterUnfilteredEventMethod("E3UI", (x) => {
-
-                if(x.typeOfEvent== EventProcessor.eventType.EQEvent)
-                {
-                    PubServer.IncomingChatMessages.Enqueue(x.eventString);
-                }else if(x.typeOfEvent == EventProcessor.eventType.MQEvent)
-                {
-                    PubServer.MQChatMessages.Enqueue(x.eventString);
-                }
-
-            });
+		
+		
 			EventProcessor.RegisterCommand("/ui", (x) =>
 			{
                 MQ.Write("/ui has been depreciated, please use /e3ui");
+			});
+			EventProcessor.RegisterCommand("/e3config", (x) =>
+			{
+				LaunchCharConfig();
 			});
 			EventProcessor.RegisterCommand("/e3ui", (x) =>
             {
@@ -91,10 +85,81 @@ namespace E3Core.Server
                if(UIProcess!=null)
                 {
                     UIProcess.Kill();
-                    UIProcess = null;
+                  
                 }
             });
         }
+		public static void KillAllProcesses()
+		{
+			if (UIProcess != null)
+			{
+				try
+				{
+					UIProcess.Kill();
+
+				}
+				catch (Exception)
+				{
+
+				}
+			}
+			if (DiscordProcess != null)
+			{
+
+				try
+				{
+					DiscordProcess.Kill();
+
+				}
+				catch (Exception)
+				{
+
+				}
+			}
+			if (ConfigProcess != null)
+			{
+
+				try
+				{
+					ConfigProcess.Kill();
+
+				}
+				catch (Exception)
+				{
+
+				}
+			}
+			
+		}
+		static void LaunchCharConfig()
+		{
+			string dllFullPath = Assembly.GetExecutingAssembly().CodeBase.Replace("file:///", "").Replace("/", "\\").Replace("e3.dll", "");
+			string exeName = "E3NextConfigEditor.exe";
+			if (ConfigProcess == null)
+			{
+				Int32 processID = System.Diagnostics.Process.GetCurrentProcess().Id;
+				MQ.Write("Trying to start:" + dllFullPath + exeName);
+				var startInfo = new ProcessStartInfo(dllFullPath + exeName);
+				startInfo.WorkingDirectory = dllFullPath;// working directory
+				startInfo.Arguments = $"{RouterPort} {processID}";// set additional properties 
+				ConfigProcess = System.Diagnostics.Process.Start(startInfo);
+
+			}
+			else
+			{
+				//we have a process, is it up?
+				if (ConfigProcess.HasExited)
+				{
+					Int32 processID = System.Diagnostics.Process.GetCurrentProcess().Id;
+					//start up a new one.
+					MQ.Write("Trying to start again:" + dllFullPath + exeName);
+					var startInfo = new ProcessStartInfo(dllFullPath + exeName);
+					startInfo.WorkingDirectory = dllFullPath;// working directory
+					startInfo.Arguments = $"{RouterPort} {processID}";// set additional properties 
+					ConfigProcess = System.Diagnostics.Process.Start(startInfo);
+				}
+			}
+		}
         /// <summary>
         /// Turns on the UI program, and then from then on, hide/shows it as needed. To close restart e3.
         /// </summary>
@@ -102,14 +167,28 @@ namespace E3Core.Server
         {
             string dllFullPath = Assembly.GetExecutingAssembly().CodeBase.Replace("file:///", "").Replace("/", "\\").Replace("e3.dll", "");
 #if DEBUG
-            dllFullPath = "C:\\Code\\E3next\\E3Next\\bin\\Debug\\";
+        //    dllFullPath = "C:\\Code\\E3next\\E3Next\\bin\\Debug\\";
 #endif
             if (UIProcess == null)
             {
                 Int32 processID = System.Diagnostics.Process.GetCurrentProcess().Id;
                 MQ.Write("Trying to start:" + dllFullPath + @"E3NextUI.exe");
                 UIProcess = System.Diagnostics.Process.Start(dllFullPath + @"E3NextUI.exe", $"{PubPort} {RouterPort} {PubClientPort} {processID}");
-            }
+				
+                //wire up the events to send data over to the UI.
+                EventProcessor.RegisterUnfilteredEventMethod("E3UI", (x) => {
+
+					if (x.typeOfEvent == EventProcessor.eventType.EQEvent)
+					{
+						PubServer.IncomingChatMessages.Enqueue(x.eventString);
+					}
+					else if (x.typeOfEvent == EventProcessor.eventType.MQEvent)
+					{
+						PubServer.MQChatMessages.Enqueue(x.eventString);
+					}
+
+				});
+			}
             else
             {
                 //we have a process, is it up?
@@ -117,7 +196,7 @@ namespace E3Core.Server
                 {
                     Int32 processID = System.Diagnostics.Process.GetCurrentProcess().Id;
                     //start up a new one.
-                    MQ.Write("Trying to start:" + dllFullPath + @"E3NextUI.exe");
+                    MQ.Write("Trying to start again:" + dllFullPath + @"E3NextUI.exe");
                     UIProcess = System.Diagnostics.Process.Start(dllFullPath + @"E3NextUI.exe", $"{PubPort} {RouterPort} {PubClientPort} {processID}");
                 }
                 else 
@@ -132,7 +211,7 @@ namespace E3Core.Server
         {
             var dllFullPath = Assembly.GetExecutingAssembly().CodeBase.Replace("file:///", "").Replace("/", "\\").Replace("e3.dll", "");
 #if DEBUG
-            dllFullPath = "C:\\Code\\E3next\\E3Next\\bin\\Debug\\";
+           // dllFullPath = "C:\\Code\\E3next\\E3Next\\bin\\Debug\\";
 #endif
             var processName = $"{dllFullPath}E3Discord.exe";
             if (DiscordProcess == null)

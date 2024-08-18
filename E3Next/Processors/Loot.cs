@@ -24,13 +24,36 @@ namespace E3Core.Processors
         private static bool _fullInventoryAlert = false;
         private static Int64 _nextLootCheck = 0;
         private static Int64 _nextLootCheckInterval = 1000;
+        private static CircularBuffer<Int32> _lootCommanderAssisngedCorpsesToLoot = new CircularBuffer<int>(100);
+        private static Dictionary<string, List<Int32>> _lootCommanderAssignmentBuilder = new Dictionary<string, List<int>>();
+		public static Settings.FeatureSettings.LootStackable LootStackableSettings = null;
 
-        [SubSystemInit]
-        public static void Init()
+		[SubSystemInit]
+        public static void Loot_Init()
         {
             RegisterEvents();
+            try
+            {
+                LootDataFile.LoadData();
 
-            LootDataFile.LoadData();
+            }
+            catch (Exception ex)
+            {
+                MQ.Write("Exception loading Loot Data file. Loot data is not available. Error:"+ex.Message + " stack:" + ex.StackTrace);
+               
+            }
+            try
+            {
+                LootStackableSettings = new LootStackable();
+				LootStackableSettings.LoadData();
+            }
+            catch(Exception ex)
+			{
+            
+				MQ.Write("Exception loading Loot Stackable Data file. message:"+ex.Message + " stack:"+ex.StackTrace);
+				
+
+			}
         }
         public static void Reset()
         {
@@ -38,13 +61,76 @@ namespace E3Core.Processors
         }
         private static void RegisterEvents()
         {
-            EventProcessor.RegisterCommand("/E3LootAdd", (x) =>
+
+			EventProcessor.RegisterCommand("/lootcommand", (x) =>
+			{
+				if (x.args.Count > 1 && !x.args[0].Equals(E3.CurrentName, StringComparison.OrdinalIgnoreCase))
+				{
+                    //send command to person
+					E3.Bots.BroadcastCommandToPerson(x.args[0], $"/lootcommand {x.args[0]} \"{x.args[1]}\"");
+				}
+				else
+				{
+                    //process command
+	
+                    if(x.args.Count>1)
+                    {
+                        string corpseIdsString = x.args[1];
+                        E3.Bots.Broadcast("LootCommander Assigning to loot:" + corpseIdsString);
+                        List<Int32> corpseIds = new List<int>();
+                        e3util.StringsToNumbers(corpseIdsString, ',', corpseIds);
+                        foreach(var corpseId in corpseIds)
+                        {
+                            _lootCommanderAssisngedCorpsesToLoot.PushBack(corpseId);
+                        }
+                    }
+   			}
+			});
+
+
+            EventProcessor.RegisterCommand("/E3LootStackAdd", (x) =>
+            {
+                if(x.args.Count>0)
+                {
+					string item = x.args[0];
+
+					if (!E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Contains(item))
+					{
+						E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Add(item);
+					}
+					
+
+				}
+                else
+                {
+					string cursorItem = MQ.Query<string>("${Cursor.Name}");
+				
+					if (cursorItem.Equals("NULL", StringComparison.OrdinalIgnoreCase) || String.IsNullOrWhiteSpace(cursorItem))
+					{
+						MQ.Write("You don't have an item on your cursor, cannot modify the loot file.");
+						MQ.Write("Place an item on your cursor and then give the proper /lootkeep, /lootsell, /lootskip /lootdestroy command");
+						return;
+					}
+					if (!E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Contains(cursorItem))
+					{
+						E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Add(cursorItem);
+					}
+					
+
+					MQ.Write($"\aoSetting {cursorItem} to KEEP");
+					E3.Bots.BroadcastCommand($"/E3LootStackAdd \"{cursorItem}\"");
+			
+					e3util.ClearCursor();
+				}
+			});
+			EventProcessor.RegisterCommand("/E3LootAdd", (x) =>
             {
                 if (x.args.Count > 1)
-                {
-                    //remove item from all collections and add to desired collection
-                    if(x.args[1]=="KEEP")
+				{
+					//remove item from all collections and add to desired collection
+					if (x.args[1]=="KEEP")
                     {
+                      
                         LootDataFile.Sell.Remove(x.args[0]);
                         LootDataFile.Skip.Remove(x.args[0]);
 						LootDataFile.Destroy.Remove(x.args[0]);
@@ -212,20 +298,143 @@ namespace E3Core.Processors
 
         public static void Process()
         {
+
             if (E3.IsInvis) return;
             if (!e3util.ShouldCheck(ref _nextLootCheck, _nextLootCheckInterval)) return;
 
-            if (!E3.CharacterSettings.Misc_AutoLootEnabled) return;
             if(!Assist.IsAssisting)
             {
-                long currentTimestamp = Core.StopWatch.ElapsedMilliseconds;
-                if ((!Basics.InCombat() && currentTimestamp - Assist.LastAssistEndedTimestamp > E3.GeneralSettings.Loot_TimeToWaitAfterAssist) && SafeToLoot() || E3.GeneralSettings.Loot_LootInCombat)
-                {
-             		LootArea();
+ 				long currentTimestamp = Core.StopWatch.ElapsedMilliseconds;
+
+				if (!E3.CharacterSettings.Misc_AutoLootEnabled) return;
+
+				if(Basics.AmIDead())
+				{
+					E3.Bots.Broadcast("I am dead, turning off autoloot");
+					E3.CharacterSettings.Misc_AutoLootEnabled = false;
+					return;
 				}
+
+				if ((!Basics.InCombat() && currentTimestamp - Assist.LastAssistEndedTimestamp > E3.GeneralSettings.Loot_TimeToWaitAfterAssist) && SafeToLoot() || E3.GeneralSettings.Loot_LootInCombat)
+                {
+                    LootArea();
+        		}
             }
         }
-        private static void LootArea()
+  //      private static void LootCommanderAssignCorpses()
+  //      {
+  //          if(Zoning.CurrentZone.IsSafeZone)
+  //          {
+  //              return;
+  //          }
+		//	List<Spawn> corpses = new List<Spawn>();
+  //          _spawns.RefreshList();//just in case to make sure corpse data is updated
+  //          foreach (var spawn in _spawns.Get())
+		//	{
+		//		//only player corpses have a Deity
+		//		if (spawn.Distance3D < E3.GeneralSettings.Loot_CorpseSeekRadius && spawn.DeityID == 0 && spawn.TypeDesc == "Corpse")
+		//		{
+			
+  //                  corpses.Add(spawn);
+		//		}
+		//	}
+  //          if(corpses.Count > 0)
+  //          {
+  //              //need to split these up and send the command to our looters
+
+  //              //populate the assignment builder, and clear anything that was from before
+  //              foreach(var user in E3.CharacterSettings.LootCommander_Looters)
+  //              {
+  //                  if(!_lootCommanderAssignmentBuilder.ContainsKey(user))
+  //                  {
+  //                      _lootCommanderAssignmentBuilder.Add(user, new List<int>());
+  //                  }
+  //                  else
+  //                  {
+  //                      _lootCommanderAssignmentBuilder[user].Clear();
+  //                  }
+  //              }
+		//		//round robin the avilable corpses to each looter
+		//		for (Int32 i =0; i < corpses.Count; i++)
+  //              {
+  //                	Int32 index = i % E3.CharacterSettings.LootCommander_Looters.Count;
+  //                  _lootCommanderAssignmentBuilder[E3.CharacterSettings.LootCommander_Looters[index]].Add(i);
+
+		//		}
+  //              foreach(var pair in _lootCommanderAssignmentBuilder)
+  //              {
+  //                  string user = pair.Key;
+  //                  List<Int32> corpseIds = pair.Value;
+  //                  //if they have assignments, send off the command
+  //                  if(corpseIds.Count> 0)
+  //                  {
+		//				E3.Bots.BroadcastCommandToPerson(user, $"/lootcommand {user} \"{e3util.NumbersToString(corpseIds, ',')}\"");
+		//			}
+  //              }
+  //          }
+		//	MQ.Cmd("/squelch /hidecorpse all");
+  //          //give time for corpses to poof
+		//	MQ.Delay(100);
+
+		//}
+		private static void LootCommanderLootCorpses(CircularBuffer<Int32> corpses)
+		{
+			if (corpses.Count<Int32>() == 0)
+			{
+				return;
+			}
+            MQ.Cmd("/squelch /hidecorpse looted");
+			MQ.Delay(100);
+			//lets check if we can loot.
+			Movement.PauseMovement();
+            // bool destroyCorpses = false;
+            List<Int32> tcorpseList = corpses.ToList();
+			foreach (var corpseid in tcorpseList)
+			{
+                if(_spawns.TryByID(corpseid,out var c))
+				{
+                    //allow eq time to send the message to us
+					e3util.YieldToEQ();
+					if (e3util.IsShuttingDown() || E3.IsPaused()) return;
+					EventProcessor.ProcessEventsInQueues("/assistme");
+					if (!E3.CharacterSettings.Misc_AutoLootEnabled) return;
+					if (!E3.GeneralSettings.Loot_LootInCombat)
+					{
+						if (Basics.InCombat()) return;
+					}
+
+					if (MQ.Query<double>($"${{Spawn[id {c.ID}].Distance3D}}") > E3.GeneralSettings.Loot_CorpseSeekRadius * 2)
+					{
+						E3.Bots.Broadcast($"\arSkipping corpse: {c.ID} because of distance: ${{Spawn[id {c.ID}].Distance3D}}");
+						continue;
+					}
+
+					Casting.TrueTarget(c.ID);
+					MQ.Delay(2000, "${Target.ID}");
+
+					if (MQ.Query<bool>("${Target.ID}"))
+					{
+						e3util.TryMoveToTarget();
+						MQ.Delay(2250, "${Target.Distance} < 10"); // Give Time to get to Corpse 
+						LootCorpse(c);
+                        corpses.PopFront();
+						if (MQ.Query<bool>("${Window[LootWnd].Open}"))
+						{
+							MQ.Cmd("/nomodkey /notify LootWnd DoneButton leftmouseup");
+						}
+
+						MQ.Delay(300);
+					}
+				}
+                else
+                {
+					corpses.PopFront();
+				}
+			}
+			E3.Bots.Broadcast("\agFinished looting commanded corpses");
+			
+		}
+		private static void LootArea()
         {
             Double startX = MQ.Query<Double>("${Me.X}");
             Double startY = MQ.Query<Double>("${Me.Y}");
@@ -278,13 +487,20 @@ namespace E3Core.Processors
                         if (Basics.InCombat()) return;
                     }
 
+
+                    if (MQ.Query<double>($"${{Spawn[id {c.ID}].Distance3D}}") > E3.GeneralSettings.Loot_CorpseSeekRadius*2)
+                    {
+                        E3.Bots.Broadcast($"\arSkipping corpse: {c.ID} because of distance: ${{Spawn[id {c.ID}].Distance3D}}");
+                        continue;
+                    }
+
                     Casting.TrueTarget(c.ID);
-                    MQ.Delay(2000, "${Target.ID}");
+                    //MQ.Delay(2000, "${Target.ID}");
                    
                     if(MQ.Query<bool>("${Target.ID}"))
                     {
                         e3util.TryMoveToTarget();
-                        MQ.Delay(2250, "${Target.Distance3D} < 10"); // Give Time to get to Corpse 
+                        MQ.Delay(2250, "${Target.Distance} < 10"); // Give Time to get to Corpse 
                         LootCorpse(c);
                        
                         if (MQ.Query<bool>("${Window[LootWnd].Open}"))
@@ -412,8 +628,53 @@ namespace E3Core.Processors
                 Int32 stackCount = MQ.Query<Int32>($"${{Corpse.Item[{i}].Stack}}");
                 bool tradeskillItem = MQ.Query<bool>($"${{Corpse.Item[{i}].Tradeskills}}");
 
-                if (E3.GeneralSettings.Loot_OnlyStackableEnabled)
+				if (LootStackableSettings.Enabled)
+				{   //this is the new character specific loot stackable
+					//check if in our always loot.
+					if (LootStackableSettings.AlwaysStackableItems.Contains(corpseItem, StringComparer.OrdinalIgnoreCase))
+					{
+						importantItem = true;
+						nodropImportantItem = nodrop;
+						MQ.Write("\ayStackable: always loot item " + corpseItem);
+					}
+                    if(!importantItem && LootStackableSettings.AlwaysStackableItemsContains.Count>0)
+                    {
+                        foreach(var item in LootStackableSettings.AlwaysStackableItemsContains)
+                        {
+                            if(corpseItem.IndexOf(item,StringComparison.OrdinalIgnoreCase)>-1)
+                            {
+                                importantItem = true;
+                                break;
+                            }
+                        }
+                    }
+
+					if (stackable && !nodrop)
+					{
+						if (!importantItem && LootStackableSettings.LootOnlyCommonTradeSkillItems)
+						{
+							if (corpseItem.Contains(" Pelt")) importantItem = true;
+							if (corpseItem.Contains(" Silk")) importantItem = true;
+							if (corpseItem.Contains(" Ore")) importantItem = true;
+						}
+						if (!importantItem && itemValue >= LootStackableSettings.LootValueGreaterThanInCopper)
+						{
+							importantItem = true;
+						}
+						if (!importantItem && LootStackableSettings.LootAllTradeSkillItems)
+						{
+							if (tradeskillItem) importantItem = true;
+						}
+
+						if (!importantItem && itemValue >= LootStackableSettings.LootValueGreaterThanInCopper)
+						{
+							importantItem = true;
+						}
+					}
+				}
+				else if (E3.GeneralSettings.Loot_OnlyStackableEnabled)
                 {
+                    //this is the legacy general settigs for loot stackable
                     //check if in our always loot.
                     if (E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Contains(corpseItem, StringComparer.OrdinalIgnoreCase))
                     {
@@ -540,22 +801,23 @@ namespace E3Core.Processors
 
             MQ.Delay(E3.GeneralSettings.Loot_LootItemDelay);//wait a little longer to let the items finish populating, for EU people they may need to increase this.
 
-            Int32 corpseItems = MQ.Query<Int32>("${Corpse.Items}");
+            Int32 corpseItemsCount = MQ.Query<Int32>("${Corpse.Items}");
 
-            if (corpseItems == 0)
+            if (corpseItemsCount == 0)
             {
                 //no items on the corpse, kick out
 
                 return;
             }
 
-            for(Int32 i =1;i<=corpseItems;i++)
+            for(Int32 i =1;i<=corpseItemsCount;i++)
             {
                 //lets try and loot them.
                 importantItem = false;
 
                 MQ.Delay(1000, $"${{Corpse.Item[{i}].ID}}");
 
+                var itemId = MQ.Query<int>($"${{Corpse.Item[{i}].ID}}");
                 string corpseItem = MQ.Query<string>($"${{Corpse.Item[{i}].Name}}");
                 bool stackable = MQ.Query<bool>($"${{Corpse.Item[{i}].Stackable}}");
                 bool nodrop = MQ.Query<bool>($"${{Corpse.Item[{i}].NoDrop}}");
@@ -567,11 +829,13 @@ namespace E3Core.Processors
                 //destroy things we don't like
 				if (LootDataFile.Destroy.Contains(corpseItem))
 				{
-					//lets loot it if we can!
-					MQ.Cmd($"/nomodkey /shift /itemnotify loot{i} leftmouseup", 300);
+                    e3util.ClearCursor();
+
+                    //lets loot it if we can!
+                    MQ.Cmd($"/nomodkey /shift /itemnotify loot{i} leftmouseup", 300);
 					MQ.Delay(1000, "${Cursor.ID}");
-					Int32 cursorid = MQ.Query<Int32>("${Cursor.ID}");
-					if (cursorid > 0)
+                    var cursorid = MQ.Query<int>("${Cursor.ID}");
+                    if (cursorid == itemId)
 					{
 						E3.Bots.Broadcast($"Deleting from corpse [{MQ.Query<string>("${Cursor}")}]");
 						//have it on our cursor, lets destroy
@@ -580,10 +844,62 @@ namespace E3Core.Processors
 						MQ.Delay(1000, "${If[${Cursor.ID},FALSE,TRUE]}");
 
 					}
+                    else
+                    {
+                        e3util.ClearCursor();
+                    }
 					continue;
 				}
 
-				if (E3.GeneralSettings.Loot_OnlyStackableEnabled)
+				if (LootStackableSettings.Enabled)
+				{   //this is the new character specific loot stackable
+					//check if in our always loot.
+					if (LootStackableSettings.AlwaysStackableItems.Contains(corpseItem, StringComparer.OrdinalIgnoreCase))
+					{
+						importantItem = true;
+						nodropImportantItem = nodrop;
+						MQ.Write("\ayStackable: always loot item " + corpseItem);
+					}
+					if (!importantItem && LootStackableSettings.AlwaysStackableItemsContains.Count > 0)
+					{
+						foreach (var item in LootStackableSettings.AlwaysStackableItemsContains)
+						{
+							if (corpseItem.IndexOf(item, StringComparison.OrdinalIgnoreCase) > -1)
+							{
+								importantItem = true;
+								break;
+							}
+						}
+					}
+
+					if (stackable && !nodrop)
+					{
+						if (!importantItem && LootStackableSettings.LootOnlyCommonTradeSkillItems)
+						{
+							if (corpseItem.Contains(" Pelt")) importantItem = true;
+							if (corpseItem.Contains(" Silk")) importantItem = true;
+							if (corpseItem.Contains(" Ore")) importantItem = true;
+						}
+						if (!importantItem && itemValue >= LootStackableSettings.LootValueGreaterThanInCopper)
+						{
+							importantItem = true;
+						}
+						if (!importantItem && LootStackableSettings.LootAllTradeSkillItems)
+						{
+							if (tradeskillItem) importantItem = true;
+						}
+
+						if (!importantItem && itemValue >= LootStackableSettings.LootValueGreaterThanInCopper)
+						{
+							importantItem = true;
+						}
+					}
+					if (LootStackableSettings.HonorLootFileSkips && LootDataFile.Skip.Contains(corpseItem))
+					{
+						importantItem = false;
+					}
+				}
+				else if (E3.GeneralSettings.Loot_OnlyStackableEnabled)
                 {
                     //check if in our always loot.
                     if (E3.GeneralSettings.Loot_OnlyStackableAlwaysLoot.Contains(corpseItem, StringComparer.OrdinalIgnoreCase))
@@ -690,14 +1006,46 @@ namespace E3Core.Processors
             if (MQ.Query<Int32>("${Corpse.Items}")>0)
             {   //link what is ever left over.
                 //should we should notify if we have not looted.
+                
                 if (!String.IsNullOrWhiteSpace(E3.GeneralSettings.Loot_LinkChannel))
                 {
-                    PrintLink($"{E3.GeneralSettings.Loot_LinkChannel} {corpse.ID} - ");
-                }
+                    
+                    if(MQ.Query<bool>("${Group}"))
+                    {
+                        PrintCorpseItems(corpse,corpseItemsCount);
+//						PrintLink($"{E3.GeneralSettings.Loot_LinkChannel} {corpse.ID} - ");
+					}
+				}
             }
 
         }
 
+        private static List<string> _printCorpseItemList = new List<string>(10); 
+        private static void PrintCorpseItems(Spawn corpse,Int32 initialCountOfItems)
+		{
+            //need the initial count in case items were looted, so that we display all items
+			Int32 corpseItems = initialCountOfItems;
+			if (corpseItems == 0)
+			{
+				//no items on the corpse, kick out
+				return;
+			}
+            _printCorpseItemList.Clear();
+			for (Int32 i = 1; i <= corpseItems; i++)
+			{
+				var itemId = MQ.Query<int>($"${{Corpse.Item[{i}].ID}}");
+				if (itemId > 0)
+				{
+					string link = MQ.Query<string>($"${{Corpse.Item[{i}].ItemLink[CLICKABLE]}}");
+					_printCorpseItemList.Add(link);
+				}
+			}
+            if(_printCorpseItemList.Count > 0 )
+            {
+				MQ.Cmd($"/{E3.GeneralSettings.Loot_LinkChannel} {corpse.ID}) - {String.Join(",", _printCorpseItemList)}");
+				_printCorpseItemList.Clear();//clear out so the values don't live long
+			}
+		}
         private static void PrintLink(string message)
         {
             MQ.Cmd("/nomodkey /keypress /");

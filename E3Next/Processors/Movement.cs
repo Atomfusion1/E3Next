@@ -21,23 +21,26 @@ namespace E3Core.Processors
         public static double Anchor_Z = double.MinValue;
         public static List<string> AnchorFilters = new List<string>();
 
-        public static bool Following = false;
-        //public static Int32 _followTargetID = 0;
-        public static string FollowTargetName = String.Empty;
+		[ExposedData("Movement", "Following")]
+		public static bool Following = false;
+		//public static Int32 _followTargetID = 0;
+		[ExposedData("Movement", "FollowTargetName")]
+		public static string FollowTargetName = String.Empty;
         public static Logging _log = E3.Log;
         private static IMQ MQ = E3.MQ;
         private static ISpawns _spawns = E3.Spawns;
         public static DoorDataFile _doorData = new DoorDataFile();
         private static Int64 _nextAnchorCheck = 0;
         private static Int64 _nextAnchorCheckInterval = 1000;
-        private static Int64 _nextFollowCheck = 0;
+        public static Int64 _nextFollowCheck = 0;
         private static Int64 _nextFollowCheckInterval = 1000;
         private static Int64 _nextChaseCheck = 0;
         private static Int64 _nextChaseCheckInterval = 10;
-        public static string _chaseTarget = String.Empty;
+		[ExposedData("Movement", "ChaseTarget")]
+		public static string _chaseTarget = String.Empty;
 
         [SubSystemInit]
-        public static void Init()
+        public static void Movement_Init()
         {
             RegisterEvents();
              _doorData.LoadData();
@@ -241,7 +244,7 @@ namespace E3Core.Processors
                 }
             }
         }
-        static System.Random rnd = new System.Random();
+        
         static void RegisterEvents()
         {
 
@@ -252,17 +255,12 @@ namespace E3Core.Processors
                 {
                     Int32.TryParse(x.args[0], out Distance);
                 }
-
                 double currentX = MQ.Query<double>("${Me.X}");
                 double currentY = MQ.Query<double>("${Me.Y}");
              
                 E3.Bots.BroadcastCommandToGroup($"/e3movetorandomloc \"{currentX}\" \"{currentY}\" \"{Distance}\"",x,true);
-            
-
             });
             EventProcessor.RegisterCommand("/e3movetorandomloc", (x) => {
-
-
                 double currentX = 0;
                 double currentY = 0;
                 Int32 distance = 10;
@@ -277,8 +275,14 @@ namespace E3Core.Processors
                 {
                     return;
                 }
-                double currentZ = MQ.Query<double>("${Me.Z}");
-                e3util.TryMoveToLoc(currentX+rnd.Next(-1*distance,distance), currentY + rnd.Next(-1 * distance, distance), currentZ);
+				if (e3util.IsEQLive())
+				{
+					//random delay so it isn't quite so ovious
+					MQ.Delay(E3.Random.Next(1500, 3000));
+
+				}
+				double currentZ = MQ.Query<double>("${Me.Z}");
+                e3util.TryMoveToLoc(currentX+E3.Random.Next(-1*distance,distance), currentY + E3.Random.Next(-1 * distance, distance), currentZ);
 
             });
             EventProcessor.RegisterCommand("/e3movetoloc", (x) => {
@@ -326,7 +330,8 @@ namespace E3Core.Processors
 
                 Int32 closestID = _doorData.ClosestDoorID();
 
-                if (closestID > 0)
+                //eqlives doors have differnt IDs, do the basic click
+                if (closestID > 0 && !e3util.IsEQLive())
                 {
                     MQ.Cmd($"/doortarget id {closestID}");
                     double currentDistance = MQ.Query<Double>("${DoorTarget.Distance}");
@@ -376,7 +381,7 @@ namespace E3Core.Processors
                     }
                 }
                 else
-                {
+                {  //either eqlive or we don't have the id in our config
                     MQ.Cmd($"/doortarget");
                     MQ.Cmd("/squelch /click left door");
                 }
@@ -560,7 +565,7 @@ namespace E3Core.Processors
             );
             EventProcessor.RegisterCommand("/followoff", (x) =>
             {
-                if (!x.args.Contains("all",StringComparer.OrdinalIgnoreCase))
+                if (!x.args.Contains("me",StringComparer.OrdinalIgnoreCase))
                 {
                     _chaseTarget = String.Empty;
                     FollowTargetName = string.Empty;
@@ -577,7 +582,7 @@ namespace E3Core.Processors
                         int zoneID = MQ.Query<int>("${Zone.ID}");
                         extraArgs += $" tome={currentX}/{currentY}/{currentZ}/{zoneID}";
                     }
-                    E3.Bots.BroadcastCommandToGroup($"/followoff all{extraArgs}",x);
+                    E3.Bots.BroadcastCommandToGroup($"/followoff me{extraArgs}",x);
                 }
                 else
                 {
@@ -629,7 +634,15 @@ namespace E3Core.Processors
                     {
                         Movement.PauseMovement();
                         Int32 currentZone = MQ.Query<Int32>("${Zone.ID}");
-                        MQ.Cmd($"/squelch /face fast heading {heading * -1}");
+                        if(e3util.IsEQLive())
+                        {
+							MQ.Cmd($"/face heading {heading * -1}",500);
+						}
+                        else
+                        {
+							MQ.Cmd($"/face fast heading {heading * -1}");
+						}
+                       
                         MQ.Delay(600);
                         MQ.Cmd("/nomodkey /keypress forward hold");
                         MQ.Delay(3000);
@@ -652,7 +665,15 @@ namespace E3Core.Processors
                     E3.Bots.BroadcastCommandToGroup($"/rtz {heading}",x);
                     if (e3util.FilterMe(x)) return;
                     MQ.Delay(1000);
-                    MQ.Cmd($"/squelch /face fast heading {heading * -1}");
+                    if(e3util.IsEQLive())
+                    {
+						MQ.Cmd($"/face heading {heading * -1}",500);
+                 	}
+                    else
+                    {
+						MQ.Cmd($"/face fast heading {heading * -1}");
+					}
+                    
                     MQ.Cmd("/nomodkey /keypress forward hold");
 
                 }

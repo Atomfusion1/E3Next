@@ -16,6 +16,7 @@ namespace E3NextUI.Settings
         public string Hotkey = String.Empty;
         public bool HotKeyAlt = false;
         public bool HotKeyCtrl = false;
+        public bool HotKeyShift = false;
         public bool HotKeyEat = false;
         public List<string> Commands = new List<string>();
     }
@@ -60,9 +61,9 @@ namespace E3NextUI.Settings
 
         private IniData _parsedData;
 
-        public GeneralSettings(string configFolder, string charName)
+        public GeneralSettings(string configFolder, string charName,string serverName)
         {
-            _fileName = $"E3UI_{charName}.ini";
+            _fileName = $"E3UI_{charName}_{serverName}.ini";
             _configFolder = configFolder;
 
         }
@@ -163,6 +164,12 @@ namespace E3NextUI.Settings
                                 b.HotKeyAlt=Boolean.Parse(keyData.Value);
 
                             }
+							keyData = section.GetKeyData("hotkeyshift");
+							if (keyData != null)
+							{
+								b.HotKeyShift = Boolean.Parse(keyData.Value);
+
+							}
 							keyData = section.GetKeyData("hotkeyctrl");
 							if (keyData != null)
 							{
@@ -251,6 +258,7 @@ namespace E3NextUI.Settings
                 }
                 section.AddKey("hotkey", pair.Value.Hotkey.ToString());
 				section.AddKey("hotkeyalt", pair.Value.HotKeyAlt.ToString());
+                section.AddKey("hotkeyshift",pair.Value.HotKeyShift.ToString());
 				section.AddKey("hotkeyctrl", pair.Value.HotKeyCtrl.ToString());
 				section.AddKey("hotkeyeat", pair.Value.HotKeyEat.ToString());
 			}

@@ -18,21 +18,28 @@ namespace E3Core.Processors
         public static Logging _log = E3.Log;
         private static IMQ MQ = E3.MQ;
         private static ISpawns _spawns = E3.Spawns;
-        public static bool _waitingOnRez = false;
+		[ExposedData("Rez", "WaitingOnRez")]
+		public static bool _waitingOnRez = false;
         private static long _nextAutoRezCheck = 0;
         private static long _nextAutoRezCheckInterval = 1000;
+        private static TimeSpan _rezDelayTimeSpan = new TimeSpan(0, 1, 0);
 
         private static long _nextRezDialogCheck = 0;
         private static long _nextRezDialogCheckInterval = 1000;
+		//should accepting rezes be paused
+		[ExposedData("Rez", "PauseRez")]
+		private static bool _pauseRez = false;
 
-        private static readonly Spell _divineRes = new Spell("Divine Resurrection");
+		private static readonly Spell _divineRes = new Spell("Divine Resurrection");
         private static readonly HashSet<string> _classesToDivineRez = new HashSet<string> { "Cleric", "Warrior", "Paladin", "Shadow Knight" };
-        private static bool _skipAutoRez = false;
+		[ExposedData("Rez", "SkipAutoRez")]
+		private static bool _skipAutoRez = false;
         private static Dictionary<int, DateTime> _recentlyRezzed = new Dictionary<int, DateTime>();
-        private static List<int> _corpsesToRemoveFromRecentlyRezzed = new List<int>();
+		[ExposedData("Rez", "CorpsesToRemoveFromRecentlyRezzed")]
+		private static List<int> _corpsesToRemoveFromRecentlyRezzed = new List<int>();
 
         [SubSystemInit]
-        public static void Init()
+        public static void Rez_Init()
         {
             RegisterEvents();
             InitRezSpells();
@@ -50,10 +57,18 @@ namespace E3Core.Processors
         {
             _waitingOnRez = false;
         }
+
         public static void Process()
         {
             if (!e3util.ShouldCheck(ref _nextRezDialogCheck, _nextRezDialogCheckInterval)) return;
             //check for dialog box
+
+            //rez is paused kick out
+            if (_pauseRez) return;
+
+            //don't do this on live as a GM will kill you and see if you auto accept a rez.
+            if (e3util.IsEQLive()) return;
+
             if (MQ.Query<bool>("${Window[ConfirmationDialogBox].Open}"))
             {
                 //check if its a valid confirmation box
@@ -73,51 +88,68 @@ namespace E3Core.Processors
                     //something went wrong kick out.
                     return;
                 }
+				Int32 totalLootAttempts = 0;
+				tryLootAgain:
 
-                //okay, we are rezed, and now need to loot our corpse. 
-                //it should be the closest so we will use spawn as it will grab the closest first.
-                Int32 corpseID = MQ.Query<Int32>("${Spawn[${Me}'s].ID}");
+				if (totalLootAttempts > 1) return;
+				//okay, we are rezed, and now need to loot our corpse. 
+				//it should be the closest so we will use spawn as it will grab the closest first.
+				Int32 corpseID = MQ.Query<Int32>("${Spawn[${Me}'s].ID}");
                 Casting.TrueTarget(corpseID);
 
                 //check if its rezable.
                 if (!CanRez())
                 {
-                    tryLootAgain:
-                    MQ.Cmd("/corpse",1000);
+					MQ.Cmd("/corpse",1000);
                         
                     MQ.Cmd("/loot");
                     MQ.Delay(1000, "${Window[LootWnd].Open}");
                     MQ.Cmd("/nomodkey /notify LootWnd LootAllButton leftmouseup");
-                    MQ.Delay(20000, "!${Window[LootWnd].Open}");
 
-                    if (MQ.Query<bool>("${Window[LootWnd].Open}"))
-                    {
-                        _waitingOnRez = false;
-                        e3util.Beep();
-                        E3.Bots.Broadcast("\agWaitForRez:\arERROR! \atLoot Window stuck open, please help.");
-                        E3.Bots.BroadcastCommand("/popup ${Me} loot window stuck open", false);
-                        MQ.Delay(1000);
-                        return;
+					MQ.Delay(300);
+					Int32 corpseItems = MQ.Query<Int32>("${Corpse.Items}");
 
-                    }
-                 
-                    string corpseName = E3.CurrentName + "'s corpse";
-                    foreach (var spawn in _spawns.Get())
-                    {
-                        if (spawn.CleanName.StartsWith(corpseName))
-                        {
-                            if (spawn.Distance < 100)
-                            {
-                                Casting.TrueTarget(spawn.ID);
-                                MQ.Delay(500);
-                                if (!CanRez())
-                                {
-                                    goto tryLootAgain;
-                                }
-                            }
-                        }
-                    }
-                    _waitingOnRez = false;
+					Int32 lastCorpseItemCount = corpseItems;
+					Int32 corpseItemTryCount = 0;
+					while(corpseItems>0 || MQ.Query<bool>("${Window[LootWnd].Open}"))
+					{
+						MQ.Delay(2000);
+						corpseItems = MQ.Query<Int32>("${Corpse.Items}");
+						if (lastCorpseItemCount == corpseItems)
+						{
+							corpseItemTryCount++;
+							if (corpseItemTryCount > 2)
+							{
+								//we are stuck, reload the entire UI, unsure if it will return before the UI is finished
+								MQ.Cmd("/reload");
+								totalLootAttempts++;
+
+								if (totalLootAttempts > 1)
+								{
+									_waitingOnRez = false;
+									e3util.Beep();
+									E3.Bots.Broadcast("\agWaitForRez:\arERROR! \atLoot Window stuck open, please help.");
+									E3.Bots.BroadcastCommand("/popup ${Me} loot window stuck open", false);
+									MQ.Delay(1000);
+									return;
+
+								}
+								goto tryLootAgain;
+							}
+							//the number hasn't changed, increment our try count
+						}
+						else
+						{
+							lastCorpseItemCount = corpseItems;
+						}
+					}
+
+					//We may have died while looting. Need to put us back into a state so we can reloot our corpse.
+					if(Zoning.CurrentZone.Id!=MQ.Query<Int32>("${Zone.ID}"))
+					{
+						return;
+					}
+					_waitingOnRez = false;
                     E3.Bots.Broadcast("\atReady to die again!");
                 }
 
@@ -166,7 +198,7 @@ namespace E3Core.Processors
             foreach (var kvp in _recentlyRezzed)
             {
                 // if < 1 minute since last rez attempt, skip
-                if (DateTime.Now - kvp.Value < new TimeSpan(0, 1, 0))
+                if (DateTime.Now - kvp.Value < _rezDelayTimeSpan)
                 {
                     continue;
                 }
@@ -364,25 +396,33 @@ namespace E3Core.Processors
                         }
                         InitRezSpells(RezType.Auto);
                         if (_currentRezSpells.Count == 0) return;
-
-                        MQ.Cmd($"/t {spawn.DisplayName} Wait4Rez",100);
-                        //MQ.Delay(1500);
-                        MQ.Cmd("/corpse");
-                        
-
+                       	
+                      
+		
                         // if it's a cleric or warrior corpse and we're in combat, try to use divine res
                         if (Basics.InCombat() && _classesToDivineRez.Contains(spawn.ClassName))
                         {
                             if (Casting.CheckReady(_divineRes))
-                            {
-                                Casting.Cast(spawn.ID, _divineRes);
+							{
+								E3.Bots.Broadcast($"Trying to rez {spawn.DisplayName}");
+								MQ.Cmd("/corpse");
+								Casting.Cast(spawn.ID, _divineRes);
                                 break;
                             }
                         }
                         
                         foreach (var spell in _currentRezSpells)
                         {
-                            if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
+
+							if (!String.IsNullOrWhiteSpace(spell.Ifs))
+							{
+								if (!Casting.Ifs(spell))
+								{
+									continue;
+								}
+							}
+
+							if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
                             {
                                 if (Basics.InCombat())
                                 {
@@ -390,17 +430,26 @@ namespace E3Core.Processors
                                     {
                                         continue;
                                     }
+									E3.Bots.Broadcast($"Trying to rez {spawn.DisplayName}");
+									MQ.Cmd("/corpse");
+									if (Casting.Cast(spawn.ID, spell, Heals.SomeoneNeedsHealing)== CastReturn.CAST_SUCCESS)
+                                    {
+										_recentlyRezzed.Add(spawn.ID, DateTime.Now);
+										break;
 
-                                    Casting.Cast(spawn.ID, spell, Heals.SomeoneNeedsHealing);
-                                    _recentlyRezzed.Add(spawn.ID, DateTime.Now);
-                                }
+									}
+								}
                                 else
-                                {
-                                    Casting.Cast(spawn.ID, spell);
-                                    _recentlyRezzed.Add(spawn.ID, DateTime.Now);
-                                }
-                                break;
-                            }
+								{
+									E3.Bots.Broadcast($"Trying to rez {spawn.DisplayName}");
+									MQ.Cmd("/corpse");
+									if (Casting.Cast(spawn.ID, spell)== CastReturn.CAST_SUCCESS)
+                                    {
+										_recentlyRezzed.Add(spawn.ID, DateTime.Now);
+										break;
+									}
+								}
+                             }
                         }
                     }
                 }
@@ -409,7 +458,7 @@ namespace E3Core.Processors
 
         public static bool CanRez()
         {
-            MQ.Cmd("/consider",500);
+            MQ.Cmd("/consider",1500);
             
             //check for the event.
             if(HasEventItem("CanRez"))
@@ -465,12 +514,14 @@ namespace E3Core.Processors
                     //we do this to check if our rez tokens have been used up.
                     InitRezSpells();
                     Casting.TrueTarget(s.ID);
-                    
-                    foreach (var spell in _currentRezSpells)
+
+					MQ.Cmd("/corpse");
+
+					foreach (var spell in _currentRezSpells)
                     {
                         if (Casting.CheckReady(spell) && Casting.CheckMana(spell) && CanRez())
                         {
-                            MQ.Cmd($"/tell {s.DisplayName} Wait4Rez", 100);
+                            E3.Bots.Broadcast($"Rezing {s.DisplayName}");
                             Casting.Cast(s.ID, spell);
 
                             return;
@@ -529,21 +580,21 @@ namespace E3Core.Processors
                         //no spells ready, break out of loop. 
                         break;
                     }
-
-                    MQ.Cmd($"/tell {s.DisplayName} Wait4Rez",1500); //long delays after tells
-
-                    //assume consent was given
-                    MQ.Cmd("/corpse");
-
-                    foreach (var spell in _currentRezSpells)
+					//assume consent was given
+		
+					E3.Bots.Broadcast($"Rezing {s.DisplayName}");
+		            foreach (var spell in _currentRezSpells)
                     {
-                   
                         if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
-                        {
-                            Casting.Cast(s.ID, spell);
-                            corpsesRaised.Add(s.ID);
-                            rezRetries = 0;
-                            break;
+						{
+							E3.Bots.Broadcast($"Trying to rez {s.DisplayName}");
+							MQ.Cmd("/corpse");
+                            if(Casting.Cast(s.ID, spell) == CastReturn.CAST_SUCCESS)
+                            {
+								corpsesRaised.Add(s.ID);
+								rezRetries = 0;
+								break;
+							}
                         }
                     }
                    
@@ -559,9 +610,10 @@ namespace E3Core.Processors
             {
                 //have some left over corpses we could rez
                 rezRetries++;
-                if(rezRetries<10)
-                {
-                    MQ.Delay(1000);
+                if(rezRetries<15)
+				{
+					E3.Bots.Broadcast($"Delaying for 1 second as we still have corpses to rez and waiting on cooldowns. retries:{rezRetries} out of 15");
+					MQ.Delay(1000);
                     goto retryRez;
 
                 }
@@ -608,7 +660,7 @@ namespace E3Core.Processors
                     {
                         s = new Spell(spellName);
                     }
-                    if(s.CastType!= CastType.None)
+                    if(s.CastType!= CastingType.None)
                     {
                         _currentRezSpells.Add(s);
 
@@ -616,8 +668,7 @@ namespace E3Core.Processors
                 }
             }
         }
-
-
+       
         private static void GatherCorpses()
         {
             if (MQ.Query<bool>("${Raid.Members}"))
@@ -641,8 +692,12 @@ namespace E3Core.Processors
 
         private static void RegisterEvents()
         {
-
-            EventProcessor.RegisterCommand("/aerez", (x) =>
+			EventProcessor.RegisterCommand("/e3prez", (x) =>
+			{
+				e3util.ToggleBooleanSetting(ref _pauseRez, "Auto Rez Accept", x.args);
+				
+			});
+			EventProcessor.RegisterCommand("/aerez", (x) =>
             {
                 if (x.args.Count == 0)
                 {
@@ -793,12 +848,21 @@ namespace E3Core.Processors
                 Assist.AssistOff();
                 _waitingOnRez = true;
             });
-
-            EventProcessor.RegisterEvent("CanRez", "This corpse can be resurrected.", (x) =>
+			var canRezMessages = new List<string>
+			{
+				"This corpse can be resurrected",
+				"This corpse's resurrection time will expire in"
+			};
+			EventProcessor.RegisterEvent("CanRez", canRezMessages, (x) =>
             {
               
             });
-            EventProcessor.RegisterEvent("CanNotRez", "This corpse cannot be resurrected.", (x) =>
+			var cannotRezMessages = new List<string>
+			{
+				"This corpse cannot be resurrected",
+				"This corpse has already accepted a resurrection"
+			};
+			EventProcessor.RegisterEvent("CanNotRez", cannotRezMessages, (x) =>
             {
 
             });

@@ -12,14 +12,15 @@ namespace E3Core.Processors
 {
     public static class Zoning
     {
-        public static Zone CurrentZone;
+		[ExposedData("Zoning", "CurrentZone")]
+		public static Zone CurrentZone;
         public static Dictionary<Int32, Zone> ZoneLookup = new Dictionary<Int32, Zone>();
         public static TributeDataFile TributeDataFile = new TributeDataFile();
 
         private static IMQ MQ = E3.MQ;
 
         [SubSystemInit]
-        public static void Init()
+        public static void Zoning_Init()
         {
             InitZoneLookup();
         }

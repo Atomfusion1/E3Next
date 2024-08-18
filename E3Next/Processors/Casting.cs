@@ -30,11 +30,24 @@ namespace E3Core.Processors
 		private static ISpawns _spawns = E3.Spawns;
 		private static Logging.LogLevels _previousLogLevel = Logging.LogLevels.Error;
 
-		public static CastReturn Cast(int targetID, Data.Spell spell, Func<Spell, Int32, Int32, bool> interruptCheck = null, bool isNowCast = false)
+		public static CastReturn Cast(int targetID, Data.Spell spell, Func<Spell, Int32, Int32, bool> interruptCheck = null, bool isNowCast = false, bool isEmergency = false)
 		{
+
+			if(e3util.IsActionBlockingWindowOpen())
+			{
+				return CastReturn.CAST_BLOCKINGWINDOWOPEN;
+			}
+
 			bool navActive = false;
 			bool navPaused = false;
 			bool e3PausedNav = false;
+			Int32 currentMana = 0;
+			Int32 pctMana = 0;
+			
+			currentMana = MQ.Query<Int32>("${Me.CurrentMana}");
+			pctMana = MQ.Query<Int32>("${Me.PctMana}");
+			
+
 			if (MQ.Query<bool>("${Cursor.ID}"))
 			{
 				e3util.ClearCursor();
@@ -46,7 +59,11 @@ namespace E3Core.Processors
 
 			}
 			try
-			{
+			{ 
+				if (spell.NoTarget)
+				{
+                    targetID = 0;
+                }
 
 				if (targetID == 0)
 				{
@@ -67,14 +84,14 @@ namespace E3Core.Processors
 				{
 					if (!(spell.TargetType == "Self" || spell.TargetType == "Group v1" || spell.TargetType == "Group v2" || spell.TargetType == "PB AE"))
 					{
-						_log.Write($"Invalid targetId for Casting. {targetID}", Logging.LogLevels.Error);
+						MQ.Write($"Invalid targetId for Casting. {targetID}");
 						E3.ActionTaken = true;
 						return CastReturn.CAST_NOTARGET;
 					}
 				}
 
 				//if this is a non bard, as we are not casting and its just an /alt activate, kick it off so it can queue up quickly. 
-				if (E3.CurrentClass != Class.Bard && spell.CastType == CastType.AA && spell.MyCastTime <= 500 && !IsCasting())
+				if (E3.CurrentClass != Class.Bard && spell.CastType == CastingType.AA && spell.MyCastTime <= 500 && !IsCasting())
 				{
 					if (!(spell.TargetType == "Self" || spell.TargetType == "Group v1"))
 					{
@@ -85,6 +102,7 @@ namespace E3Core.Processors
 
 					if (_spawns.TryByID(targetID, out var s))
 					{
+
 						//targets of 0 means keep current target
 						if (targetID > 0)
 						{
@@ -94,7 +112,7 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
-						_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+						MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 					}
 					BeforeEventCheck(spell);
 					BeforeSpellCheck(spell, targetID);
@@ -116,15 +134,16 @@ namespace E3Core.Processors
 					}
 					return CastReturn.CAST_SUCCESS;
 				}
-          //bard can cast insta cast items while singing, they be special.
-          else if (E3.CurrentClass == Class.Bard && spell.NoMidSongCast == false && spell.MyCastTime <= 500 && (spell.CastType == CastType.Item || spell.CastType == CastType.AA || spell.CastType == Data.CastType.Ability))
-          {
-              //instant cast item, can cast while singing
-              //note bards are special and cast do insta casts while doing normal singing. they have their own 
-              //sing area, so only go here to do item/aa casts while singing. can't do IsCasting checks as it will catch
-              //on the singing... so just kick out and assume all is well.
-              if (_spawns.TryByID(targetID, out var s))
+                //bard can cast insta cast items while singing, they be special.
+                else if (E3.CurrentClass == Class.Bard && spell.NoMidSongCast == false && spell.MyCastTime <= 500 && (spell.CastType == CastingType.Item || spell.CastType == CastingType.AA || spell.CastType == Data.CastingType.Ability))
+                {
+                    //instant cast item, can cast while singing
+                    //note bards are special and cast do insta casts while doing normal singing. they have their own 
+                    //sing area, so only go here to do item/aa casts while singing. can't do IsCasting checks as it will catch
+                    //on the singing... so just kick out and assume all is well.
+                    if (_spawns.TryByID(targetID, out var s))
 					{
+
 						String targetName = String.Empty;
 						//targets of 0 means keep current target
 						if (targetID > 0)
@@ -135,27 +154,35 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
-            //this lets bard kick regardless of current song status, otherwise will wait until between songs to kick
-            string abilityToCheck = spell.CastName;
-            if (spell.CastType == Data.CastType.Ability && abilityToCheck.Equals("Kick", StringComparison.OrdinalIgnoreCase))
-            {
-                _log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
-                MQ.Cmd($"/doability \"{spell.CastName}\"");
-                return CastReturn.CAST_SUCCESS;
-            }
-            _log.Write($"\agBardCast {spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
-						if (spell.CastType == CastType.AA)
+						TrueTarget(targetID);
+
+                        //this lets bard kick regardless of current song status, otherwise will wait until between songs to kick
+                        string abilityToCheck = spell.CastName;
+                        if (spell.CastType == Data.CastingType.Ability && abilityToCheck.Equals("Kick", StringComparison.OrdinalIgnoreCase))
+                        {
+							BeforeEventCheck(spell);
+							MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
+                            MQ.Cmd($"/doability \"{spell.CastName}\"");
+							AfterEventCheck(spell);
+							return CastReturn.CAST_SUCCESS;
+                        }
+                        MQ.Write($"\agBardCast {spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+						if (spell.CastType == CastingType.AA)
 						{
+							BeforeEventCheck(spell);
 							MQ.Cmd($"/alt activate {spell.CastID}");
 							UpdateAAInCooldown(spell);
+							AfterEventCheck(spell);
 							E3.ActionTaken = true;
 							return CastReturn.CAST_SUCCESS;
 						}
-                        if (spell.CastType == CastType.Item)
+                        if (spell.CastType == CastingType.Item)
                         {
-                            //else its an item
-                            MQ.Cmd($"/useitem \"{spell.CastName}\"", 300);
+							BeforeEventCheck(spell);
+							//else its an item
+							MQ.Cmd($"/useitem \"{spell.CastName}\"", 300);
 							UpdateItemInCooldown(spell);
+							AfterEventCheck(spell);
 							E3.ActionTaken = true;
 							return CastReturn.CAST_SUCCESS;
 						}
@@ -165,10 +192,11 @@ namespace E3Core.Processors
 						return CastReturn.CAST_NOTARGET;
 					}
 				}
-				else if (E3.CurrentClass == Class.Bard && spell.CastType == CastType.Spell)
+				else if (E3.CurrentClass == Class.Bard && spell.CastType == CastingType.Spell)
 				{
 					Sing(targetID, spell);
-					MQ.Delay((int)spell.MyCastTime);
+					Int32 delay =(int)MQ.Query<int>("${Me.CastTimeLeft}") + Classes.Bard.BardLatency();
+					MQ.Delay(delay);
 					return CastReturn.CAST_SUCCESS;
 				}
 				else
@@ -177,12 +205,35 @@ namespace E3Core.Processors
 					while (IsCasting())
 					{
 						MQ.Delay(50);
+						
 						if (E3.IsPaused())
 						{
 							Interrupt();
 							return CastReturn.CAST_INTERRUPTED;
 						}
-						if (!isNowCast && NowCast.IsNowCastInQueue())
+
+						if (!isEmergency && Heals.SomeoneNeedEmergencyHealing(currentMana, pctMana))
+						{
+							E3.Bots.Broadcast($"Interrupting [{spell.CastName}] for Emergecy Heal.");
+							Interrupt();
+							E3.ActionTaken = true;
+							//fire of emergency heal asap! checks targets in network and xtarget
+							Heals.SomeoneNeedEmergencyHealing(currentMana, pctMana, true);
+							return CastReturn.CAST_INTERRUPTFORHEAL;
+						}
+						if (!isEmergency && Heals.SomeoneNeedEmergencyHealingGroup(currentMana, pctMana))
+						{
+
+							E3.Bots.Broadcast($"Interrupting [{spell.CastName}] for Emergecy Group Heal.");
+							Interrupt();
+							E3.ActionTaken = true;
+							//fire of emergency heal asap!
+							//checks group members
+							Heals.SomeoneNeedEmergencyHealingGroup(currentMana, pctMana, true);
+							return CastReturn.CAST_INTERRUPTFORHEAL;
+						}
+
+						if (!isNowCast && !isEmergency && NowCast.IsNowCastInQueue())
 						{
 							//we have a nowcast ready to be processed
 							Interrupt();
@@ -195,6 +246,20 @@ namespace E3Core.Processors
 							if (!IsCasting()) return CastReturn.CAST_INTERRUPTED;
 
 						}
+						if (EventProcessor.CommandList["/assistme"].queuedEvents.Count > 0)
+						{
+							Int32 tAssistID = Assist.AssistTargetID;
+
+							EventProcessor.ProcessEventsInQueues("/assistme");
+						
+							if(tAssistID>0 && Assist.AssistTargetID>0 && tAssistID != Assist.AssistTargetID)
+							{
+								Interrupt();
+								if (!IsCasting()) return CastReturn.CAST_INTERRUPTED;
+							}
+							
+
+						}
 						if (EventProcessor.CommandList["/followme"].queuedEvents.Count > 0)
 						{
 							EventProcessor.ProcessEventsInQueues("/followme");
@@ -204,6 +269,7 @@ namespace E3Core.Processors
 						}
 
 						//process any commands we need to process from the UI
+						NetMQServer.SharedDataClient.ProcessCommands();
 						PubClient.ProcessRequests();
 
 					}
@@ -229,7 +295,7 @@ namespace E3Core.Processors
 						{
 							targetName = MQ.Query<string>($"${{Spawn[id ${{Target.ID}}].CleanName}}");
 						}
-						_log.Write($"TargetName:{targetName}", Logging.LogLevels.Debug);
+						_log.Write($"TargetName:{targetName}");
 						//why we should not cast.. for whatever reason.
 						#region validation checks
 						if (!isNowCast && MQ.Query<bool>("${Me.Invis}"))
@@ -237,21 +303,22 @@ namespace E3Core.Processors
 
 							E3.ActionTaken = true;
 
-							_log.Write($"SkipCast-Invis ${spell.CastName} {targetName} : {targetID}", Logging.LogLevels.Debug);
+							_log.Write($"SkipCast-Invis ${spell.CastName} {targetName} : {targetID}");
 							return CastReturn.CAST_INVIS;
 
 						}
 
 						if (!String.IsNullOrWhiteSpace(spell.Reagent))
 						{
+							
 							_log.Write($"Checking for reagent required for spell cast:{targetName} value:{spell.Reagent}");
 							//spell requires a regent, lets check if we have it.
 							Int32 itemCount = MQ.Query<Int32>($"${{FindItemCount[={spell.Reagent}]}}");
 							if (itemCount < 1)
 							{
 								spell.ReagentOutOfStock = true;
-								_log.Write($"Cannot cast [{spell.CastName}], I do not have any [{spell.Reagent}], removing this spell from array. Restock and Reload Macro", Logging.LogLevels.Error);
-								E3.Bots.BroadcastCommand($"/popup ${{Me}} does not have {spell.Reagent}", false);
+								_log.Write($"Cannot cast [{spell.CastName}], I do not have any [{spell.Reagent}], removing this spell from array. Restock for this spell to cast again.", Logging.LogLevels.Error);
+								E3.Bots.Broadcast($"Cannot cast [{spell.CastName}], I do not have any [{spell.Reagent}], removing this spell from array. Restock for this spell to cast again.");
 								e3util.Beep();
 								return CastReturn.CAST_REAGENT;
 							}
@@ -280,12 +347,20 @@ namespace E3Core.Processors
 							return CastReturn.CAST_FEIGN;
 						}
 						_log.Write("Checking for Open spell book....");
-						if (MQ.Query<bool>("${Window[SpellBookWnd].Open}"))
+						if (MQ.Query<bool>("${Window[SpellBookWnd].Open}") )
 						{
-							E3.ActionTaken = true;
-							E3.Bots.Broadcast($"skipping [{spell.CastName}] , spellbook is open.");
-							MQ.Delay(200);
-							return CastReturn.CAST_SPELLBOOKOPEN;
+							if(!e3util.IsManualControl())
+							{
+								MQ.Cmd("/stand");
+							}
+							else
+							{
+								E3.ActionTaken = true;
+								E3.Bots.Broadcast($"skipping [{spell.CastName}] , spellbook is open.");
+								MQ.Delay(200);
+								return CastReturn.CAST_SPELLBOOKOPEN;
+							}
+							
 						}
 						_log.Write("Checking for Open corpse....");
 						if (MQ.Query<bool>("${Corpse.Open}"))
@@ -308,7 +383,7 @@ namespace E3Core.Processors
 									if (!MQ.Query<bool>($"${{Spawn[id {targetID}].LineOfSight}}"))
 									{
 										_log.Write($"I cannot see {targetName}");
-										_log.Write($"SkipCast-LoS {spell.CastName} ${spell.CastID} {targetName} {targetID}", Logging.LogLevels.Info);
+										MQ.Write($"SkipCast-LoS {spell.CastName} ${spell.CastID} {targetName} {targetID}");
 										return CastReturn.CAST_CANNOTSEE;
 
 									}
@@ -317,14 +392,18 @@ namespace E3Core.Processors
 						}
 						#endregion
 						//now to get the target
-						_log.Write("Checking to see if we need to aquire a target for non self /pbaoe", Logging.LogLevels.Debug);
+						_log.Write("Checking to see if we need to aquire a target for non self /pbaoe");
 						if (spell.TargetType != "PB AE" && spell.TargetType != "Self")
 						{
 							if (Basics.InCombat() && targetID != Assist.AssistTargetID && MQ.Query<bool>("${Stick.Active}"))
 							{
 								MQ.Cmd("/stick pause");
 							}
-							TrueTarget(targetID);
+							if(!TrueTarget(targetID))
+							{
+								E3.Bots.Broadcast($"Spell Target failure for targetid:{targetID} for spell {spell.SpellName}");
+								return CastReturn.CAST_NOTARGET;
+							}
 						}
 
 						BeforeEventCheck(spell);
@@ -333,7 +412,7 @@ namespace E3Core.Processors
 						_log.Write("Checking for item on cursor...");
 						if (MQ.Query<bool>("${Cursor.ID}"))
 						{
-							_log.Write($"Issuing auto inventory on {MQ.Query<string>("${Cursor}")} for spell: {spell.CastName}", Logging.LogLevels.Info);
+							MQ.Write($"Issuing auto inventory on {MQ.Query<string>("${Cursor}")} for spell: {spell.CastName}");
 							e3util.ClearCursor();
 						}
 
@@ -341,26 +420,29 @@ namespace E3Core.Processors
 
 						//From here, we actually start casting the spell. 
 						_log.Write("Checking for spell type to run logic...");
-						if (spell.CastType == Data.CastType.Disc)
+						if (spell.CastType == Data.CastingType.Disc)
 						{
 							_log.Write("Doing disc based logic checks...");
 							if (MQ.Query<bool>("${Me.ActiveDisc.ID}") && spell.TargetType.Equals("Self"))
 							{
 								return CastReturn.CAST_ACTIVEDISC;
+
 							}
 							else
 							{
 								//activate disc!
 								TrueTarget(targetID);
 								E3.ActionTaken = true;
-								_log.Write("Issuing Disc command:{spell.CastName}");
+								
+								MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 								MQ.Cmd($"/disc {spell.CastName}");
 								MQ.Delay(300);
 								returnValue = CastReturn.CAST_SUCCESS;
 								goto startCasting;
 							}
+
 						}
-						else if (spell.CastType == Data.CastType.Ability)
+						else if (spell.CastType == Data.CastingType.Ability)
 						{
 
 							string abilityToCheck = spell.CastName;
@@ -377,42 +459,42 @@ namespace E3Core.Processors
 							}
 							_log.Write("Doing Ability based logic checks...");
 							//to deal with a slam bug
-							if (spell.CastName.Equals("Slam"))
+							if (spell.CastName.Equals("Slam", StringComparison.OrdinalIgnoreCase))
 							{
 								_log.Write("Doing Ability:Slam based logic checks...");
 								if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FirstAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 1");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_SecondAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 2");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_ThirdAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 3");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FourthAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 4");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FourthAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 5");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_FifthAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 5");
 								}
 								else if (MQ.Query<bool>("${Window[ActionsAbilitiesPage].Child[AAP_SixthAbilityButton].Text.Equal[Slam]}"))
 								{
-									_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+									MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 									MQ.Cmd("/doability 6");
 								}
 								else
@@ -422,7 +504,7 @@ namespace E3Core.Processors
 							}
 							else
 							{
-								_log.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}", Logging.LogLevels.Info);
+								MQ.Write($"\ag{spell.CastName} \am{targetName} \ao{targetID}");
 								MQ.Cmd($"/doability \"{spell.CastName}\"");
 							}
 
@@ -465,12 +547,15 @@ namespace E3Core.Processors
 
 								}
 
-								if (spell.CastType == Data.CastType.Spell)
+								if (spell.CastType == Data.CastingType.Spell)
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-									_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+									PubServer.AddTopicMessage("${Me.Casting}",spell.CastName);
+									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 
-									MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\"");
+									MQ.Cmd($"/cast \"{spell.CastName}\"");
+									//MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\"");
+
 									if (spell.MyCastTime > 500)
 									{
 										MQ.Delay(500);
@@ -478,12 +563,14 @@ namespace E3Core.Processors
 								}
 								else
 								{
-									if (spell.CastType == CastType.AA)
+									if (spell.CastType == CastingType.AA)
 									{
 										PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-										_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+										PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
+										MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 
-										MQ.Cmd($"/casting \"{spell.CastName}|alt\"");
+										//MQ.Cmd($"/casting \"{spell.CastName}|alt\"");
+										MQ.Cmd($"/alt activate {spell.AAID}");
 										UpdateAAInCooldown(spell);
 
 										if (spell.MyCastTime > 500)
@@ -498,10 +585,12 @@ namespace E3Core.Processors
 									else
 									{
 										PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-										_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
+										PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
+										MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
 
 										//else its an item
-										MQ.Cmd($"/casting \"{spell.CastName}|{spell.CastType.ToString()}\"");
+										//MQ.Cmd($"/casting \"{spell.CastName}|{spell.CastType.ToString()}\"");
+										MQ.Cmd($"/useitem \"{spell.CastName}\"");
 										UpdateItemInCooldown(spell);
 										if (spell.MyCastTime > 500)
 										{
@@ -512,11 +601,14 @@ namespace E3Core.Processors
 							}
 							else
 							{
-								if (spell.CastType == Data.CastType.Spell)
+								if (spell.CastType == Data.CastingType.Spell)
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-									_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
-									MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\" \"-targetid|{targetID}\"");
+									PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
+									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+									//MQ.Cmd($"/casting \"{spell.CastName}|{spell.SpellGem}\" \"-targetid|{targetID}\"");
+									MQ.Cmd($"/cast \"{spell.CastName}\"");
+
 									if (spell.MyCastTime > 500)
 									{
 										MQ.Delay(500);
@@ -525,10 +617,12 @@ namespace E3Core.Processors
 								else
 								{
 									PubServer.AddTopicMessage("${Casting}", $"{spell.CastName} on {targetName}");
-									_log.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)", Logging.LogLevels.Info);
-									if (spell.CastType == CastType.AA)
+									PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
+									MQ.Write($"\ag{spell.CastName} \at{spell.SpellID} \am{targetName} \ao{targetID} \aw({spell.MyCastTime / 1000}sec)");
+									if (spell.CastType == CastingType.AA)
 									{
-										MQ.Cmd($"/casting \"{spell.CastName}|alt\" \"-targetid|{targetID}\"");
+										//MQ.Cmd($"/casting \"{spell.CastName}|alt\" \"-targetid|{targetID}\"");
+										MQ.Cmd($"/alt activate {spell.AAID}");
 										UpdateAAInCooldown(spell);
 
 										if (spell.MyCastTime > 500)
@@ -543,7 +637,9 @@ namespace E3Core.Processors
 									else
 									{
 										//else its an item
-										MQ.Cmd($"/casting \"{spell.CastName}|item\" \"-targetid|{targetID}\"");
+										PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
+										//MQ.Cmd($"/casting \"{spell.CastName}|item\" \"-targetid|{targetID}\"");
+										MQ.Cmd($"/useitem \"{spell.CastName}\"");
 										UpdateItemInCooldown(spell);
 										if (spell.MyCastTime > 500)
 										{
@@ -553,20 +649,41 @@ namespace E3Core.Processors
 								}
 							}
 						}
+
 					startCasting:
 
 						//needed for heal interrupt check
-						Int32 currentMana = 0;
-						Int32 pctMana = 0;
-						if (interruptCheck != null)
-						{
-							currentMana = MQ.Query<Int32>("${Me.CurrentMana}");
-							pctMana = MQ.Query<Int32>("${Me.PctMana}");
-						}
+					
+						currentMana = MQ.Query<Int32>("${Me.CurrentMana}");
+						pctMana = MQ.Query<Int32>("${Me.PctMana}");
+						
 
 						while (IsCasting())
 						{
 							//means that we didn't fizzle and are now casting the spell
+
+							//these are outside the no interrupt check
+							if (!isEmergency && Heals.SomeoneNeedEmergencyHealing(currentMana, pctMana))
+							{
+								E3.Bots.Broadcast($"Interrupting [{spell.CastName}] for Emergecy Heal.");
+								Interrupt();
+								E3.ActionTaken = true;
+								//fire of emergency heal asap! checks targets in network and xtarget
+								Heals.SomeoneNeedEmergencyHealing(currentMana, pctMana, true);
+								return CastReturn.CAST_INTERRUPTFORHEAL;
+							}
+							if (!isEmergency && Heals.SomeoneNeedEmergencyHealingGroup(currentMana, pctMana))
+							{
+
+								E3.Bots.Broadcast($"Interrupting [{spell.CastName}] for Emergecy Group Heal.");
+								Interrupt();
+								E3.ActionTaken = true;
+								//fire of emergency heal asap!
+								//checks group members
+								Heals.SomeoneNeedEmergencyHealingGroup(currentMana, pctMana, true);
+								return CastReturn.CAST_INTERRUPTFORHEAL;
+							}
+
 							if (!spell.NoInterrupt)
 							{
 								if (interruptCheck != null && interruptCheck(spell, currentMana, pctMana))
@@ -575,15 +692,16 @@ namespace E3Core.Processors
 									E3.ActionTaken = true;
 									return CastReturn.CAST_INTERRUPTFORHEAL;
 								}
+
 								//check to see if there is a nowcast queued up, if so we need to kickout.
-								if (!isNowCast && NowCastReady())
+								if (!isNowCast && !isEmergency && NowCastReady())
 								{
 									//we have a nowcast ready to be processed
 									Interrupt();
 									return CastReturn.CAST_INTERRUPTED;
 								}
 								//check if we need to process any events,if healing tho, ignore. 
-								if (spell.SpellType.Equals("Detrimental") || E3.CurrentClass == Class.Bard)
+								if ((spell.SpellType.Equals("Detrimental") || spell.Duration>0)|| E3.CurrentClass == Class.Bard)
 								{
 									if (EventProcessor.CommandList["/backoff"].queuedEvents.Count > 0)
 									{
@@ -591,14 +709,35 @@ namespace E3Core.Processors
 										if (!IsCasting()) return CastReturn.CAST_INTERRUPTED;
 
 									}
+									if (EventProcessor.CommandList["/assistme"].queuedEvents.Count > 0)
+									{
+										Int32 tAssistID = Assist.AssistTargetID;
+
+										EventProcessor.ProcessEventsInQueues("/assistme");
+
+										if (tAssistID > 0 && Assist.AssistTargetID > 0 && tAssistID != Assist.AssistTargetID)
+										{
+											Interrupt();
+											if (!IsCasting()) return CastReturn.CAST_INTERRUPTED;
+										}
+									}
 									if (EventProcessor.CommandList["/followme"].queuedEvents.Count > 0)
 									{
 										EventProcessor.ProcessEventsInQueues("/followme");
 										if (!IsCasting()) return CastReturn.CAST_INTERRUPTED;
 									}
+									if (E3.CurrentClass == Class.Druid || E3.CurrentClass == Class.Wizard)
+									{
+										if (EventProcessor.CommandList["/evac"].queuedEvents.Count > 0)
+										{
+											Interrupt();
+											EventProcessor.ProcessEventsInQueues("/evac");
+											if (!IsCasting()) return CastReturn.CAST_INTERRUPTED;
+										}
+									}
 								}
 							}
-							if (spell.SpellType.Equals("Detrimental") && spell.TargetType != "PB AE")
+							if (spell.SpellType.Equals("Detrimental") && (spell.TargetType != "PB AE" && spell.TargetType!="Self"))
 							{
 								bool isCorpse = MQ.Query<bool>("${Target.Type.Equal[Corpse]}");
 
@@ -611,7 +750,8 @@ namespace E3Core.Processors
 								}
 							}
 
-							//process any commands we need to process from the UI
+							//process any commands we need to process from the UI or just basic commands from other bots/drivers
+							NetMQServer.SharedDataClient.ProcessCommands();
 							PubClient.ProcessRequests();
 							MQ.Delay(50);
 
@@ -627,7 +767,7 @@ namespace E3Core.Processors
 								EventProcessor.ProcessEventsInQueues("/shutdown");
 								return CastReturn.CAST_INTERRUPTED;
 							}
-							if (MQ.Query<bool>("${Me.Invis}"))
+							if (!isNowCast && MQ.Query<bool>("${Me.Invis}"))
 							{
 								Interrupt();
 								return CastReturn.CAST_INVIS;
@@ -703,7 +843,7 @@ namespace E3Core.Processors
 						return returnValue;
 
 					}
-					_log.Write($"\arInvalid targetId for Casting. {targetID}", Logging.LogLevels.Error);
+					MQ.Write($"\arInvalid targetId for Casting. {targetID}");
 					E3.ActionTaken = true;
 					return CastReturn.CAST_NOTARGET;
 				}
@@ -712,6 +852,7 @@ namespace E3Core.Processors
 			{
 				//send message to the ui to clear their casting information
 				PubServer.AddTopicMessage("${Casting}", String.Empty);
+				PubServer.AddTopicMessage("${Me.Casting}", String.Empty);
 				//unpause any stick command that may be paused
 				MQ.Cmd("/stick unpause");
 				//resume navigation.
@@ -765,12 +906,22 @@ namespace E3Core.Processors
 				{
 					spell.AfterSpellData = new Data.Spell(spell.AfterSpell);
 				}
-				//Wait for GCD if spell
-
+			
 				_log.Write("Doing AfterSpell:{spell.AfterSpell}");
 				if (CheckReady(spell.AfterSpellData) && CheckMana(spell.AfterSpellData))
 				{
-					Casting.Cast(targetID, spell.AfterSpellData);
+				retrycast:
+					Int32 retryCounter = 0;
+					if(Casting.Cast(targetID, spell.AfterSpellData)== CastReturn.CAST_FIZZLE) 
+					{ 
+						retryCounter++;
+						if(retryCounter>5)
+						{
+							return;
+						}
+						goto retrycast;
+
+					}
 				}
 			}
 		}
@@ -788,7 +939,11 @@ namespace E3Core.Processors
 				_log.Write("Doing AfterSpell:{spell.AfterSpell}");
 				if (CheckReady(spell.BeforeSpellData) && CheckMana(spell.BeforeSpellData))
 				{
-					Casting.Cast(targetID, spell.BeforeSpellData);
+					retrycast:
+					if (Casting.Cast(targetID, spell.BeforeSpellData) == CastReturn.CAST_FIZZLE)
+					{
+						goto retrycast;
+					}
 				}
 				_log.Write($"Doing BeforeSpell:{spell.BeforeSpell}");
 
@@ -804,6 +959,7 @@ namespace E3Core.Processors
 		}
 		public static void Sing(Int32 targetid, Data.Spell spell)
 		{
+		
 			if (E3.CurrentClass != Data.Class.Bard) return;
 			//Stop following for spell/item/aa with a cast time > 0 MyCastTime, unless im a bard
 			//anything under 300 is insta cast
@@ -812,8 +968,8 @@ namespace E3Core.Processors
 			{
 				TrueTarget(targetid);
 			}
-
-			if (spell.CastType == CastType.Spell)
+			
+			if (spell.CastType == CastingType.Spell)
 			{
 				//if (MQ.Query<bool>($"${{Bool[${{Me.Book[{spell.CastName}]}}]}}"))
 				{
@@ -824,11 +980,27 @@ namespace E3Core.Processors
 					{
 						_log.Write($"Doing BeforeEvent:{spell.BeforeEvent}");
 						MQ.Cmd($"/docommand {spell.BeforeEvent}");
-						if (spell.BeforeEvent.StartsWith("/exchange", StringComparison.OrdinalIgnoreCase)) MQ.Delay(300);
+						//if (spell.BeforeEvent.StartsWith("/exchange", StringComparison.OrdinalIgnoreCase)) MQ.Delay(300);
+						//if (spell.BeforeEvent.StartsWith("/bando", StringComparison.OrdinalIgnoreCase)) MQ.Delay(300);
 					}
-
+					Int32 retryCounter = 0;
+					retrysong:
+					MQ.Cmd("/stopsong");
+					PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
 					MQ.Cmd($"/cast \"{spell.CastName}\"");
-					MQ.Delay(300, IsCasting);
+
+					if(spell.MyCastTime>500)
+					{
+						MQ.Delay(300, IsCasting);
+						if (e3util.IsEQLive())
+						{
+							if (IsCasting())
+							{
+								//on live the cast window comes up on a missed note, so we check just for a bit to make sure so we can recast. 
+								MQ.Delay(500);
+							}
+						}
+					}
 					//sometimes the cast isn't fully complete even if the window is done
 					///allow the player to 'tweak' this value.
 					if (E3.CharacterSettings.Misc_DelayAfterCastWindowDropsForSpellCompletion > 0)
@@ -837,14 +1009,10 @@ namespace E3Core.Processors
 					}
 					if (!IsCasting())
 					{
-						_log.Write("Issuing stopcast as cast window isn't open", Logging.LogLevels.Error);
-						MQ.Cmd("/stopsong");
-						MQ.Delay(100);
-						MQ.Cmd($"/cast \"{spell.CastName}\"");
-						//wait for spell cast window
-						if (spell.MyCastTime > 500)
+						if (retryCounter < 5)
 						{
-							MQ.Delay(1000);
+							retryCounter++;
+							goto retrysong;
 						}
 					}
 
@@ -858,12 +1026,11 @@ namespace E3Core.Processors
 
 				}
 			}
-			else if (spell.CastType == CastType.Item)
+			else if (spell.CastType == CastingType.Item)
 			{
 				if (spell.MyCastTime > 500)
 				{
 					MQ.Cmd("/stopsong", 100);
-
 				}
 				// special exception for this item
 				var luteName = "Lute of the Flowing Waters";
@@ -885,6 +1052,7 @@ namespace E3Core.Processors
 					MQ.Cmd($"/docommand {spell.BeforeEvent}");
 					if (spell.BeforeEvent.StartsWith("/exchange", StringComparison.OrdinalIgnoreCase)) MQ.Delay(300);
 				}
+				PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
 				MQ.Cmd($"/useitem \"{spell.CastName}\"", 300);
 				//after event, after all things are done               
 				if (!String.IsNullOrWhiteSpace(spell.AfterEvent))
@@ -893,7 +1061,7 @@ namespace E3Core.Processors
 					MQ.Cmd($"/docommand {spell.AfterEvent}");
 				}
 			}
-			else if (spell.CastType == CastType.AA)
+			else if (spell.CastType == CastingType.AA)
 			{
 				if (spell.MyCastTime > 500)
 				{
@@ -905,8 +1073,10 @@ namespace E3Core.Processors
 					MQ.Cmd($"/docommand {spell.BeforeEvent}");
 					if (spell.BeforeEvent.StartsWith("/exchange", StringComparison.OrdinalIgnoreCase)) MQ.Delay(300);
 				}
-				MQ.Cmd($"/casting \"{spell.CastName}\" alt", 300);
+				PubServer.AddTopicMessage("${Me.Casting}", spell.CastName);
 
+				//MQ.Cmd($"/casting \"{spell.CastName}\" alt", 300);
+				MQ.Cmd($"/alt activate {spell.AAID}",300);
 				//after event, after all things are done               
 				if (!String.IsNullOrWhiteSpace(spell.AfterEvent))
 				{
@@ -914,7 +1084,6 @@ namespace E3Core.Processors
 					MQ.Cmd($"/docommand {spell.AfterEvent}");
 				}
 			}
-
 		}
 		public static bool IsSpellMemed(string spellName)
 		{
@@ -933,10 +1102,66 @@ namespace E3Core.Processors
 			}
 			return false;
 		}
-
-		public static bool MemorizeSpell(Data.Spell spell)
+		public static void MemorizeAllSpells()
 		{
-			if (!(spell.CastType == CastType.Spell && spell.SpellInBook))
+			MQ.Cmd("/squelch /windowstate SpellBookWnd open",1000);
+			foreach(Spell s in E3.CharacterSettings.Nukes)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.Dots_OnCommand)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.Dots_Assist)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.Debuffs_Command)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.Debuffs_OnAssist)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.HealTanks)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.HealImportantBots)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.HealTanks)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s, true);
+			}
+			foreach (Spell s in E3.CharacterSettings.HealAll)
+			{
+				if (!SpellBookWndOpen()) return;
+				MemorizeSpell(s,true);
+			}
+
+			MQ.Cmd("/stand");
+		}
+		public static bool SpellBookWndOpen()
+		{
+			return MQ.Query<bool>("${Window[SpellBookWnd].Open}");
+			
+		}
+		public static bool MemorizeSpell(Data.Spell spell,bool ignoreWait=false)
+		{
+		
+			if (!(spell.CastType == CastingType.Spell && spell.SpellInBook))
 			{
 				//we can't mem this just return true
 				return true;
@@ -975,11 +1200,17 @@ namespace E3Core.Processors
 					return false;
 				}
 			}
-			_log.Write($"\aySpell not memed, meming \ag{spell.SpellName} \ayin \awGEM:{spell.SpellGem}", Logging.LogLevels.Error);
-			MQ.Cmd($"/memorize \"{spell.SpellName}\" {spell.SpellGem}");
-			MQ.Delay(2000);
-			MQ.Delay(5000, "!${Window[SpellBookWnd].Open}");
-			MQ.Delay(3000, $"${{Me.SpellReady[${{Me.Gem[{spell.SpellGem}].Name}}]}}");
+			MQ.Write($"\aySpell not memed, meming \ag{spell.SpellName} \ayin \awGEM:{spell.SpellGem}");
+			MQ.Cmd($"/memspell {spell.SpellGem} \"{spell.SpellName}\"");
+			MQ.Delay(15000, $"${{Me.Gem[{spell.SpellGem}].Name.Equal[{spell.SpellName}]}} || !${{Window[SpellBookWnd].Open}}");
+			if(!ignoreWait)
+			{
+				//sanity check that we stand in case something went wrong
+				//we do it in the ignorewait, because if we do ignore wait they already will do the 
+				//sit/stand as we are meming lots of spells at once. 
+				MQ.Cmd("/stand");
+				MQ.Delay(3000, $"${{Me.SpellReady[${{Me.Gem[{spell.SpellGem}].Name}}]}}");
+			}
 
 			//make double sure the collectio has this spell gem. maybe purchased AA for new slots?
 			if (!_gemRecastLockForMem.ContainsKey(spell.SpellGem))
@@ -1000,6 +1231,8 @@ namespace E3Core.Processors
 
 		public static Boolean CheckMana(Data.Spell spell)
 		{
+			if (!spell.Initialized) spell.ReInit();
+
 			Int32 currentMana = MQ.Query<Int32>("${Me.CurrentMana}");
 			Int32 pctMana = MQ.Query<Int32>("${Me.PctMana}");
 			if (currentMana >= spell.Mana)
@@ -1025,8 +1258,9 @@ namespace E3Core.Processors
 			if (!IsCasting()) return;
 
 			bool onMount = MQ.Query<bool>("${Me.Mount.ID}");
-			if (onMount)
+			if (onMount && e3util.IsEQEMU())
 			{
+				//can't interrupt on emu.
 				if (E3.CharacterSettings.Misc_DismountOnInterrupt)
 				{
 					MQ.Cmd("/dismount");
@@ -1069,7 +1303,7 @@ namespace E3Core.Processors
 			return true;
 		}
 
-		private static System.Collections.Generic.Dictionary<String, Int64> _ItemCooldownLookup = new Dictionary<string, long>() { { "Invocation Rune: Vulka's Chant of Lightning", 18000 } };
+		private static System.Collections.Generic.Dictionary<String, Int64> _ItemCooldownLookup = new Dictionary<string, long>() { { "Invocation Rune: Vulka's Chant of Lightning", 18000 }, { "Invocation Glyph: Vulka's Chant of Lightning", 12000 } };
 		private static System.Collections.Generic.Dictionary<String, Int64> _ItemsInCooldown = new Dictionary<string, long>() { };
 		private static System.Collections.Generic.Dictionary<String, Int64> _AAInCooldown = new Dictionary<string, long>() { };
 
@@ -1149,7 +1383,7 @@ namespace E3Core.Processors
 			}
 			else
 			{
-				if (MQ.Query<bool>($"${{Me.ItemReady[{spell.CastName}]}}"))
+				if (MQ.Query<bool>($"${{Me.ItemReady[={spell.CastName}]}}"))
 				{
 					return false;
 				}
@@ -1168,8 +1402,14 @@ namespace E3Core.Processors
 
 			_log.Write($"Checking if spell is ready on {spell.CastName}");
 
-			if (MQ.Query<bool>($"${{Me.SpellReady[{spell.CastName}]}}") && MQ.Query<Int32>($"${{Me.GemTimer[{spell.CastName}]}}") < 1)
+			if (MQ.Query<Int32>($"${{Me.GemTimer[{spell.CastName}]}}") ==0)
 			{
+				//check if we are out of stock still
+				if(spell.ReagentOutOfStock)
+				{
+					Int32 itemCount = MQ.Query<Int32>($"${{FindItemCount[={spell.Reagent}]}}");
+					if (itemCount<1) return true;
+				}
 				_log.Write($"CheckReady Success! on {spell.CastName}");
 
 				returnValue = false;
@@ -1214,32 +1454,68 @@ namespace E3Core.Processors
 		}
 
 
-		public static Boolean CheckReady(Data.Spell spell)
+		public static Boolean CheckReady(Data.Spell spell, bool skipCastCheck = false)
 		{
-			if (spell.CastType == CastType.None) return false;
-			//do we need to memorize it?
+			if (!spell.Enabled) return false;
+			if (!spell.Initialized) spell.ReInit();
 
-			if ((spell.CastType == CastType.Spell || spell.CastType == CastType.Item || spell.CastType == CastType.AA) && MQ.Query<bool>("${Debuff.Silenced}")) return false;
-
-			if (!MemorizeSpell(spell))
+			if (e3util.IsActionBlockingWindowOpen())
 			{
 				return false;
 			}
-
+			//if your stunned nothing is ready
+			if (MQ.Query<bool>("${Me.Stunned}"))
+			{
+				return false;
+			}
+			if (spell.CastType == CastingType.None) return false;
+			//do we need to memorize it?
+			if ((spell.CastType == CastingType.Spell || spell.CastType == CastingType.Item || spell.CastType == CastingType.AA) && MQ.Query<bool>("${Debuff.Silenced}")) return false;
 
 			//_log.Write($"CheckReady on {spell.CastName}");
-
-			if (E3.CurrentClass != Data.Class.Bard)
+			if(!skipCastCheck)
 			{
-				while (IsCasting())
+				if (E3.CurrentClass != Data.Class.Bard)
 				{
-					MQ.Delay(20);
+					while (IsCasting())
+					{
+						MQ.Delay(20);
+					}
 				}
+
 			}
 
 			bool returnValue = false;
-			if (spell.CastType == Data.CastType.Spell && spell.SpellInBook)
+			if (spell.CastType == Data.CastingType.Spell && spell.SpellInBook)
 			{
+				//do we already have it memed?
+				bool spellMemed = false;
+				foreach (var spellid in _currentSpellGems.Values)
+				{
+					if (spellid == spell.SpellID && spellid != 0)
+					{
+						spellMemed = true;
+						break;
+					}
+				}
+
+				//if not memed, and we are not currently tanking
+				//mem the spell or try to.
+				if (!spellMemed)
+				{
+					//lets not sit while we have 100% aggro on a mob , crits be bad
+					Int32 pctAggro = MQ.Query<Int32>("${Me.PctAggro}");
+
+					if (pctAggro == 100)
+					{
+						//don't try and mem a spell while tanking
+						return false;
+					}
+					if (!MemorizeSpell(spell))
+					{
+						return false;
+					}
+				}
 
 				if (!SpellInCooldown(spell))
 				{
@@ -1247,14 +1523,14 @@ namespace E3Core.Processors
 				}
 
 			}
-			else if (spell.CastType == Data.CastType.Item)
+			else if (spell.CastType == Data.CastingType.Item)
 			{
 				if (!ItemInCooldown(spell))
 				{
 					return true;
 				}
 			}
-			else if (spell.CastType == Data.CastType.AA)
+			else if (spell.CastType == Data.CastingType.AA)
 			{
 				if (!AAInCooldown(spell))
 				{
@@ -1262,7 +1538,7 @@ namespace E3Core.Processors
 				}
 
 			}
-			else if (spell.CastType == Data.CastType.Disc)
+			else if (spell.CastType == Data.CastingType.Disc)
 			{
 				//bug with thiefs eyes, always return true
 				if (spell.SpellID == 8001) return true;
@@ -1276,7 +1552,7 @@ namespace E3Core.Processors
 					return true;
 				}
 			}
-			else if (spell.CastType == Data.CastType.Ability)
+			else if (spell.CastType == Data.CastingType.Ability)
 			{
 				string abilityToCheck = spell.CastName;
 
@@ -1295,6 +1571,10 @@ namespace E3Core.Processors
 		}
 		public static bool InRange(Int32 targetId, Data.Spell spell)
 		{
+			if (!spell.Initialized) spell.ReInit(); 
+
+			if (spell.MyRange == 0) return true;
+
 			Spawn s;
 			if (_spawns.TryByID(targetId, out s))
 			{
@@ -1309,8 +1589,14 @@ namespace E3Core.Processors
 
 		public static Dictionary<string, string> VarsetValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		[SubSystemInit]
-		public static void InitVarSets()
+		public static void Casting_InitCommands()
 		{
+
+			EventProcessor.RegisterCommand("/e3resetcounters", (x) =>
+			{
+				Casting.ResetResistCounters();
+				E3.Bots.Broadcast("Resetting resist counters...");
+			});
 			EventProcessor.RegisterCommand("/e3varset", (x) =>
 			{
 				//key/value
@@ -1318,6 +1604,80 @@ namespace E3Core.Processors
 				{
 					string key = x.args[0];
 					string value = x.args[1];
+					if (VarsetValues.Count > 0)
+					{
+						foreach (var vkey in VarsetValues.Keys)
+						{
+							if (value.IndexOf($"({vkey})", 0, StringComparison.OrdinalIgnoreCase) > -1)
+							{
+
+								value = value.ReplaceInsensitive($"({vkey})", $"({VarsetValues[vkey]})");
+							}
+						}
+					}
+					if (!VarsetValues.ContainsKey(key))
+					{
+						VarsetValues.Add(key, value);
+					}
+					else
+					{
+						VarsetValues[key] = value;
+					}
+				}
+			});
+			EventProcessor.RegisterCommand("/e3varbool", (x) =>
+			{
+				//key/value
+				if (x.args.Count > 1)
+				{
+					string key = x.args[0];
+					string value = x.args[1];
+
+					if (VarsetValues.Count > 0)
+					{
+						foreach (var vkey in VarsetValues.Keys)
+						{
+							if (value.IndexOf($"({vkey})", 0, StringComparison.OrdinalIgnoreCase) > -1)
+							{
+
+								value = value.ReplaceInsensitive($"({vkey})", $"({VarsetValues[vkey]})");
+							}
+						}
+					}
+					value = Ifs(value).ToString();
+
+
+					if (!VarsetValues.ContainsKey(key))
+					{
+						VarsetValues.Add(key, value);
+					}
+					else
+					{
+						VarsetValues[key] = value;
+					}
+				}
+			});
+			EventProcessor.RegisterCommand("/e3varcalc", (x) =>
+			{
+				//key/value
+				if (x.args.Count > 1)
+				{
+					string key = x.args[0];
+					string value = x.args[1];
+					if (VarsetValues.Count > 0)
+					{
+						foreach (var vkey in VarsetValues.Keys)
+						{
+							if (value.IndexOf($"({vkey})", 0, StringComparison.OrdinalIgnoreCase) > -1)
+							{
+
+								value = value.ReplaceInsensitive($"({vkey})", $"({VarsetValues[vkey]})");
+							}
+						}
+					}
+					value = Ifs_Results(value);
+					value = MQ.Query<double>($"${{Math.Calc[{value}]}}").ToString();
+
 					if (!VarsetValues.ContainsKey(key))
 					{
 						VarsetValues.Add(key, value);
@@ -1375,7 +1735,7 @@ namespace E3Core.Processors
 		{
 			return Ifs(spell.Ifs);
 		}
-		
+		private static StringBuilder _ifsStringBuilder = new StringBuilder(); 
 		public static bool Ifs(string IfsExpression)
 		{
 			if (!String.IsNullOrWhiteSpace(IfsExpression))
@@ -1418,6 +1778,122 @@ namespace E3Core.Processors
 					}
 				}
 			}
+			//to deal with an issue of ( and [ in the parser
+			if (tIF.Contains(@"\["))
+			{
+				//settings shouldn't have [, if we do they should be ( or ) instead
+				tIF = tIF.Replace(@"\[", "(").Replace(@"\]", ")");
+			}
+
+			//dynamic lookup via reflection
+			//${E3N.Settings.Header.Key}
+			if (tIF.IndexOf("${E3N.Settings",0,StringComparison.OrdinalIgnoreCase)>-1)
+			{
+
+				foreach (var pair in E3.CharacterSettings.SettingsReflectionLookup)
+				{
+					if (tIF.IndexOf(pair.Key, 0, StringComparison.OrdinalIgnoreCase) > -1)
+					{
+						var field = pair.Value;
+						if (field.IsGenericList(typeof(String)))
+						{
+							List<string> fieldValue = (List<string>)field.GetValue(E3.CharacterSettings);
+							string finallist = string.Join(",", fieldValue);
+							tIF = tIF.ReplaceInsensitive(pair.Key, finallist);
+						}
+						else if (field.IsGenericList(typeof(Int32)))
+						{
+							List<Int32> fieldValue = (List<Int32>)field.GetValue(E3.CharacterSettings);
+							string finallist = string.Join(",", fieldValue);
+							tIF = tIF.ReplaceInsensitive(pair.Key, finallist);
+						}
+						else if (field.IsGenericList(typeof(Spell)))
+						{
+							List<Spell> fieldValue = (List<Spell>)field.GetValue(E3.CharacterSettings);
+							_ifsStringBuilder.Clear();
+							foreach (var spell in fieldValue)
+							{
+								if(_ifsStringBuilder.Length==0)
+								{
+									_ifsStringBuilder.Append(spell.CastName);
+								}
+								else
+								{
+									_ifsStringBuilder.Append(","+spell.CastName);
+								}
+							}
+							tIF = tIF.ReplaceInsensitive(pair.Key, _ifsStringBuilder.ToString());
+						}
+						else if (field.IsGenericList(typeof(Int64)))
+						{
+							List<Int64> fieldValue = (List<Int64>)field.GetValue(E3.CharacterSettings);
+							string finallist = string.Join(",", fieldValue);
+							tIF = tIF.ReplaceInsensitive(pair.Key, finallist);
+						}
+						else
+						{
+							tIF = tIF.ReplaceInsensitive(pair.Key, pair.Value.GetValue(E3.CharacterSettings).ToString());
+
+						}
+						
+					}
+				}
+			}
+			if (tIF.IndexOf("${E3N.State", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+				foreach (var pair in Setup.ExposedDataReflectionLookup)
+				{
+					var field = pair.Value;
+					if(field.IsStatic)
+					{
+						if (tIF.IndexOf(pair.Key, 0, StringComparison.OrdinalIgnoreCase) > -1)
+						{
+							//we are pulling static data, so pass a null to get it. 
+							if (field.IsGenericList(typeof(String)))
+							{
+								List<string> fieldValue = (List<string>)field.GetValue(null);
+								string finallist = string.Join(",",fieldValue);
+								tIF = tIF.ReplaceInsensitive(pair.Key, finallist);
+							}
+							else if (field.IsGenericList(typeof(Spell)))
+							{
+								List<Spell> fieldValue = (List<Spell>)field.GetValue(null);
+								_ifsStringBuilder.Clear();
+								foreach (var spell in fieldValue)
+								{
+									if (_ifsStringBuilder.Length == 0)
+									{
+										_ifsStringBuilder.Append(spell.CastName);
+									}
+									else
+									{
+										_ifsStringBuilder.Append("," + spell.CastName);
+									}
+								}
+								tIF = tIF.ReplaceInsensitive(pair.Key, _ifsStringBuilder.ToString());
+							}
+							else if (field.IsGenericList(typeof(Int32)))
+							{
+								List<Int32> fieldValue = (List<Int32>)field.GetValue(null);
+								string finallist = string.Join(",", fieldValue);
+								tIF = tIF.ReplaceInsensitive(pair.Key, finallist);
+							}
+							else if (field.IsGenericList(typeof(Int64)))
+							{
+								List<Int64> fieldValue = (List<Int64>)field.GetValue(null);
+								string finallist = string.Join(",", fieldValue);
+								tIF = tIF.ReplaceInsensitive(pair.Key, finallist);
+							}
+							else
+							{
+								tIF = tIF.ReplaceInsensitive(pair.Key, field.GetValue(null).ToString());
+
+							}
+						}
+					}
+				}
+			}
+
 			//need to do some legacy compatability checksraibles that were used in Ifs.
 			if (tIF.IndexOf("${Assisting}", 0, StringComparison.OrdinalIgnoreCase) > -1)
 			{
@@ -1433,6 +1909,16 @@ namespace E3Core.Processors
 				//lets replace it with TRUE/FALSE
 				tIF = tIF.ReplaceInsensitive("${PBAEON}", Nukes.PBAEEnabled.ToString());
 			}
+			//if (tIF.IndexOf("${E3N.State.ClearTargets}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			//{
+			//	//lets replace it with TRUE/FALSE
+			//	tIF = tIF.ReplaceInsensitive("${E3N.State.ClearTargets}", ClearXTargets.Enabled.ToString());
+			//}
+			//if (tIF.IndexOf("${E3N.State.IsLootOn}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			//{
+			//	//lets replace it with TRUE/FALSE
+			//	tIF = tIF.ReplaceInsensitive("${E3N.State.IsLootOn}", E3.CharacterSettings.Misc_AutoLootEnabled.ToString());
+			//}
 			if (tIF.IndexOf("${AssistTarget}", 0, StringComparison.OrdinalIgnoreCase) > -1)
 			{
 				//lets replace it with TRUE/FALSE
@@ -1482,14 +1968,35 @@ namespace E3Core.Processors
 				//lets replace it with TRUE/FALSE
 				tIF = tIF.ReplaceInsensitive("${InCombat}", (Basics.InCombat()).ToString());
 			}
+			if (tIF.IndexOf("${StandingStillForTimePeriod}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+				//lets replace it with TRUE/FALSE
+				tIF = tIF.ReplaceInsensitive("${StandingStillForTimePeriod}", (Movement.StandingStillForTimePeriod()).ToString());
+			}
+			if (tIF.IndexOf("${NotStandingStillForTimePeriod}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+				//lets replace it with TRUE/FALSE
+				tIF = tIF.ReplaceInsensitive("${NotStandingStillForTimePeriod}", (!Movement.StandingStillForTimePeriod()).ToString());
+			}
+			if (tIF.IndexOf("${IsSafeZone}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+				//lets replace it with TRUE/FALSE
+				tIF = tIF.ReplaceInsensitive("${IsSafeZone}", (Zoning.CurrentZone.IsSafeZone).ToString());
+			}
+			if (tIF.IndexOf("${IsNotSafeZone}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+				//lets replace it with TRUE/FALSE
+				tIF = tIF.ReplaceInsensitive("${IsNotSafeZone}", (!Zoning.CurrentZone.IsSafeZone).ToString());
+			}
+			//StandingStillForTimePeriod()
 
 			return tIF;
 		}
 
-		static System.Text.RegularExpressions.Regex _e3buffexistsRegEx = new System.Text.RegularExpressions.Regex(@"\$\{E3BuffExists\[([A-Za-z0-9 _]+),([A-Za-z0-9 _]+)\]\}", System.Text.RegularExpressions.RegexOptions.Compiled);
-		static System.Text.RegularExpressions.Regex _e3BotsRegEx = new System.Text.RegularExpressions.Regex(@"\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.([A-Za-z]+)\}", System.Text.RegularExpressions.RegexOptions.Compiled);
-		static System.Text.RegularExpressions.Regex _e3BotsBuffsRegEx = new System.Text.RegularExpressions.Regex(@"\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.Buffs\[([A-Za-z0-9 _]+)\]\.([A-Za-z0-9]+)\}", System.Text.RegularExpressions.RegexOptions.Compiled);
-
+		static Regex _e3buffexistsRegEx = new Regex(@"\$\{E3BuffExists\[([A-Za-z0-9 _]+),([A-Za-z0-9 _]+)\]\}", RegexOptions.Compiled);
+		static Regex _e3BotsRegEx = new Regex(@"\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.([A-Za-z]+)\}", RegexOptions.Compiled);
+		static Regex _e3BotsBuffsRegEx = new Regex(@"\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.Buffs\[([A-Za-z0-9 _]+)\]\.([A-Za-z0-9]+)\}", RegexOptions.Compiled);
+		static Regex _e3BotsQuery = new Regex(@"\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.Query\[([A-Za-z]+)\]\}", RegexOptions.Compiled);
 		//
 		//to replace the NetBots functionality of query data in the ini files
 		//a bit of regex hell while trying to be somewhat efficent
@@ -1497,19 +2004,115 @@ namespace E3Core.Processors
 		
 		public static void Ifs_E3Bots(ref string tIF)
 		{
-
-			//need to do some legacy compatability checksraibles that were used in Ifs.
+			
+			
+			//do we need to run ANY of the E3Bots regex?, quick n dirty check
 			if (tIF.IndexOf("${E3Bots[", 0, StringComparison.OrdinalIgnoreCase) > -1)
 			{
 				string replaceValue = "";
-				//time for some regex
+				MatchCollection matches;
+				//do we need to run any of the query regexes?, quick n dirty check
+				if (tIF.IndexOf(".Query[", 0, StringComparison.OrdinalIgnoreCase) > -1)
+				{
+					replaceValue = "";
+					////\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.Query\([A-Za-z]+)\]\}
+					//${E3Bots[Rekken].Query[SomeKeyValue]}
+					// gruop0: ${E3Bots[Rekken].Query[SomeKeyValue]}
+					// group1: Rekken
+					// group2: SomeKeyValue
+					matches = _e3BotsQuery.Matches(tIF);
+					foreach (Match match in matches)
+					{
+						if (match.Success && match.Groups.Count > 0)
+						{
+							//${E3Bots[Rekken].Query[SomeKeyValue]}
+							string replaceString = match.Groups[0].Value;
+							string replacevalue = replaceString;
+							//Rekken
+							string targetname = match.Groups[1].Value;
+							//SomeKeyValue
+							string keyValue = match.Groups[2].Value;
+							keyValue = "${Data." + keyValue + "}"; //data format for custom keys
+							replaceValue = "";
+							string result = E3.Bots.Query(targetname, keyValue);
+							if (result != "NULL")
+							{
+								replaceValue = result;
+							}
 
+
+							//check to see if some modification was done
+							if (replaceString != replaceValue)
+							{
+								tIF = tIF.ReplaceInsensitive(replaceString, replaceValue);
+							}
+						}
+
+					}
+				}
+				//do we need to run any of the buff regexes? quick n dirty check
+				if (tIF.IndexOf(".Buffs[", 0, StringComparison.OrdinalIgnoreCase) > -1)
+				{
+					matches = _e3BotsBuffsRegEx.Matches(tIF);
+
+					foreach (Match match in matches)
+					{
+						if (match.Success && match.Groups.Count > 0)
+						{
+							//${E3Bots[Rekken].Buffs[Hand of Conviction].ID}
+							//${E3Bots[Rekken].Buffs[Hand of Conviction].Duration}
+							string replaceString = match.Groups[0].Value;
+							replaceValue = replaceString;
+							//Rekken
+							string targetname = match.Groups[1].Value;
+							//buffname
+							string buffName = match.Groups[2].Value;
+							//ID,Duration,etc
+							string query = match.Groups[3].Value;
+							if (query == "ID")
+							{
+								replaceValue = "0";
+								List<Int32> buffList = E3.Bots.BuffList(targetname);
+								Int32 spellID = Spell.SpellIDLookup(buffName);
+								if (spellID > 0)
+								{
+									if (buffList.Contains(spellID))
+									{
+										replaceValue = spellID.ToString();
+									}
+								}
+							}
+							if (query == "Duration")
+							{
+								replaceValue = "0";
+								CharacterBuffs buffInfo = E3.Bots.GetBuffInformation(targetname);
+
+								if (buffInfo != null)
+								{
+									Int32 spellID = Spell.SpellIDLookup(buffName);
+									if (buffInfo.BuffDurations.TryGetValue(spellID, out var buffDuration))
+									{
+										replaceValue = buffDuration.ToString();
+									}
+								}
+							}
+							//check to see if some modification was done
+							if (replaceString != replaceValue)
+							{
+								tIF = tIF.ReplaceInsensitive(replaceString, replaceValue);
+							}
+						}
+					}
+				}
+			
+				//time for the rest of the regexs , the above should have already done their work.
+				replaceValue = "";
 				////\$\{E3Bots\[([A-Za-z0-9 _]+)\]\.([A-Za-z]+)\}
 				//${E3Bots[Rekken].Hps} && ${E3Bots[Rekken].Hps}
 				// gruop0: ${E3Bots[Rekken].Hps}
 				// group1: Rekken
 				// group2: Hps
-				var matches = _e3BotsRegEx.Matches(tIF);
+				matches = _e3BotsRegEx.Matches(tIF);
 				foreach (Match match in matches)
 				{
 					if (match.Success && match.Groups.Count > 0)
@@ -1520,13 +2123,13 @@ namespace E3Core.Processors
 						//Rekken
 						string targetname = match.Groups[1].Value;
 						//CurrentHps
-						string query= match.Groups[2].Value;
+						string query = match.Groups[2].Value;
 
-						if(query=="PctHPs")
+						if (query == "PctHPs")
 						{
 							replaceValue = "100";
 							string result = E3.Bots.Query(targetname, "${Me.PctHPs}");
-							if(result != "NULL")
+							if (result != "NULL")
 							{
 								replaceValue = result;
 							}
@@ -1549,7 +2152,7 @@ namespace E3Core.Processors
 								replaceValue = result;
 							}
 						}
-						else if(query=="CurrentHPs")
+						else if (query == "CurrentHPs")
 						{
 							replaceValue = "0";
 							string result = E3.Bots.Query(targetname, "${Me.CurrentHPs}");
@@ -1576,56 +2179,58 @@ namespace E3Core.Processors
 								replaceValue = result;
 							}
 						}
-						//check to see if some modification was done
-						if(replaceString!=replaceValue)
-						{
-							tIF = tIF.ReplaceInsensitive(replaceString, replaceValue);
-						}
-
-					}
-				}
-
-				matches =_e3BotsBuffsRegEx.Matches(tIF);
-
-				foreach(Match match in matches)
-				{
-					if (match.Success && match.Groups.Count > 0)
-					{
-						//${E3Bots[Rekken].Buffs[Hand of Conviction].ID}
-						//${E3Bots[Rekken].Buffs[Hand of Conviction].Duration}
-						string replaceString = match.Groups[0].Value;
-						replaceValue = replaceString;
-						//Rekken
-						string targetname = match.Groups[1].Value;
-						//buffname
-						string buffName = match.Groups[2].Value;
-						//ID,Duration,etc
-						string query = match.Groups[3].Value;
-						if (query == "ID")
+						else if (query == "CurrentTargetID")
 						{
 							replaceValue = "0";
-							List<Int32> buffList = E3.Bots.BuffList(targetname);
-							Int32 spellID = Spell.SpellIDLookup(buffName);
-							if (spellID > 0)
+							string result = E3.Bots.Query(targetname, "${Me.CurrentTargetID}");
+							if (result != "NULL")
 							{
-								if (buffList.Contains(spellID))
-								{
-									replaceValue = spellID.ToString();
-								}
+								replaceValue = result;
 							}
 						}
-						if (query == "Duration")
+						else if (query == "Casting")
+						{
+							replaceValue = "";
+							string result = E3.Bots.Query(targetname, "${Me.Casting}");
+							if (result != "NULL")
+							{
+								replaceValue = result;
+							}
+						}
+						else if (query == "AAPoints")
 						{
 							replaceValue = "0";
-							CharacterBuffs buffInfo = E3.Bots.GetBuffInformation(targetname);
-
-							if (buffInfo!=null)
+							string result = E3.Bots.Query(targetname, "${Me.AAPoints}");
+							if (result != "NULL")
 							{
-								Int32 spellID = Spell.SpellIDLookup(buffName);
-								if (buffInfo.BuffDurations.TryGetValue(spellID, out var buffDuration))
-								{
-									replaceValue = buffDuration.ToString();
-								}
+								replaceValue = result;
+							}
+						}
+						else if (query == "AAPointsAssigned")
+						{
+							replaceValue = "0";
+							string result = E3.Bots.Query(targetname, "${Me.AAPointsAssigned}");
+							if (result != "NULL")
+							{
+								replaceValue = result;
+							}
+						}
+						else if (query == "AAPointsSpent")
+						{
+							replaceValue = "0";
+							string result = E3.Bots.Query(targetname, "${Me.AAPointsSpent}");
+							if (result != "NULL")
+							{
+								replaceValue = result;
+							}
+						}
+						else if (query == "AAPointsTotal")
+						{
+							replaceValue = "0";
+							string result = E3.Bots.Query(targetname, "${Me.AAPointsTotal}");
+							if (result != "NULL")
+							{
+								replaceValue = result;
 							}
 						}
 						//check to see if some modification was done
@@ -1633,13 +2238,27 @@ namespace E3Core.Processors
 						{
 							tIF = tIF.ReplaceInsensitive(replaceString, replaceValue);
 						}
+
 					}
 				}
+				
+				
 			}
-
-			//need to do some legacy compatability checksraibles that were used in Ifs.
-			if (tIF.IndexOf("${E3BuffExists[", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			else if (tIF.IndexOf("${E3Bots.ConnectedClients}", 0, StringComparison.OrdinalIgnoreCase) > -1)
 			{
+
+				tIF = tIF.ReplaceInsensitive("${E3Bots.ConnectedClients}", String.Join(",", E3.Bots.BotsConnected()));
+
+			}
+			else if (tIF.IndexOf("${E3Bots.ConnectedClientsCount}", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+
+				tIF = tIF.ReplaceInsensitive("${E3Bots.ConnectedClientsCount}", E3.Bots.BotsConnected().Count.ToString());
+
+			}
+			else if (tIF.IndexOf("${E3BuffExists[", 0, StringComparison.OrdinalIgnoreCase) > -1)
+			{
+				//need to do some legacy compatability checksraibles that were used in Ifs.
 				bool replaceValue = false;
 				//time for some regex
 
@@ -1734,7 +2353,7 @@ namespace E3Core.Processors
 
 		}
 		[SubSystemInit]
-		public static void Init()
+		public static void Casting_Init()
 		{
 			RegisterEventsCasting();
 			RegisterEventsCastResults();
@@ -1828,7 +2447,7 @@ namespace E3Core.Processors
 		public static Int64 TimeLeftOnMySpell(Data.Spell spell)
 		{
 
-			for (Int32 i = 1; i < 57; i++)
+			for (Int32 i = 1; i < (e3util.MobMaxDebuffSlots+1); i++)
 			{
 				Int32 buffID = MQ.Query<Int32>($"${{Target.Buff[{i}].ID}}");
 
@@ -1876,15 +2495,20 @@ namespace E3Core.Processors
 			if (buffIndex > 0)
 			{
 				millisecondsLeft = MQ.Query<Int64>($"${{Me.Pet.Buff[{buffIndex}].Duration}}");
-				if (millisecondsLeft == 0)
+				if(millisecondsLeft<0)
 				{
-					//check if perma spell
-					Int32 duration = MQ.Query<Int32>($"${{Spell[{buffIndex}].Duration}}");
-					if (duration < 0)
-					{
-						millisecondsLeft = Int32.MaxValue;
-					}
+					//perma buff?
+					millisecondsLeft = Int32.MaxValue;
 				}
+				//if (millisecondsLeft == 0)
+				//{
+				//	//check if perma spell
+				//	Int32 duration = MQ.Query<Int32>($"${{Spell[{spell.SpellName}].Duration}}");
+				//	if (duration < 0)
+				//	{
+				//		millisecondsLeft = Int32.MaxValue;
+				//	}
+				//}
 			}
 			return millisecondsLeft;
 		}
@@ -2102,6 +2726,7 @@ namespace E3Core.Processors
 		CAST_ZONING,
 		CAST_FEIGN,
 		CAST_SPELLBOOKOPEN,
+		CAST_BLOCKINGWINDOWOPEN,
 		CAST_ACTIVEDISC,
 		CAST_INTERRUPTFORHEAL,
 		CAST_CORPSEOPEN,

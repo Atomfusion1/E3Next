@@ -7,6 +7,7 @@ using NetMQ.Sockets;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -125,7 +126,9 @@ namespace E3Core.Server
         }
         private void Process(string filePath)
         {
-            AsyncIO.ForceDotNet.Force();
+			//need to do this so double parses work in other languages
+			Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
+			AsyncIO.ForceDotNet.Force();
             using (var pubSocket = new PublisherSocket())
             {
                 pubSocket.Options.SendHighWatermark = 50000;
@@ -138,9 +141,10 @@ namespace E3Core.Server
                     {
                         if (_topicMessages.TryDequeue(out var value))
                         {
+                            //using so that we put it back into the memory pool
                             using(value)
                             {
-								pubSocket.SendMoreFrame(value.topic).SendFrame(value.message);
+								pubSocket.SendMoreFrame(value.topic).SendFrame($"{E3.CurrentName}:{value.message}");
 							}
                         }
                     }
@@ -150,7 +154,7 @@ namespace E3Core.Server
                         if (IncomingChatMessages.TryDequeue(out message))
                         {
 
-                            pubSocket.SendMoreFrame("OnIncomingChat").SendFrame(message);
+                            pubSocket.SendMoreFrame("OnIncomingChat").SendFrame($"{E3.CurrentName}:{message}");
                         }
                     }
                    while (MQChatMessages.Count > 0)
@@ -159,7 +163,7 @@ namespace E3Core.Server
                         if (MQChatMessages.TryDequeue(out message))
                         {
 
-                            pubSocket.SendMoreFrame("OnWriteChatColor").SendFrame(message);
+                            pubSocket.SendMoreFrame("OnWriteChatColor").SendFrame($"{E3.CurrentName}:{message}");
 
                         }
                     }
@@ -169,7 +173,7 @@ namespace E3Core.Server
                         if (CommandsToSend.TryDequeue(out message))
                         {
 
-                            pubSocket.SendMoreFrame("OnCommand").SendFrame(message);
+                            pubSocket.SendMoreFrame("OnCommand").SendFrame($"{E3.CurrentName}:{message}");
 
                         }
                     }
@@ -182,9 +186,9 @@ namespace E3Core.Server
 				}
 				catch (Exception)
                 {
-                    MQ.Write("Issue deleting pubsub.txt file");
+                    MQ.WriteDelayed("Issue deleting pubsub.txt file");
                 }
-				MQ.Write("Shutting down PubServer Thread.");
+				MQ.WriteDelayed("Shutting down PubServer Thread.");
             }
         }
     }

@@ -12,7 +12,8 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Text;
 using static MonoCore.EventProcessor;
-
+using E3Core.Server;
+using System.Reflection;
 
 namespace E3Core.Utility
 {
@@ -24,30 +25,46 @@ namespace E3Core.Utility
         private static IMQ MQ = E3.MQ;
         private static ISpawns _spawns = E3.Spawns;
 
-		public static Int32 MaxBuffSlots = 38;
-		public static Int32 MaxSongSlots = 20;
+		public static Int32 MaxBuffSlots = 42;
+		public static Int32 MaxSongSlots = 30;
         public static Int32 MaxPetBuffSlots = 30;
+        public static Int32 MobMaxDebuffSlots = 55;
+        public static Int32 XtargetMax = 12;
 
 		//share this as we can reuse as its only 1 thread
-		private static StringBuilder resultStringBuilder = new StringBuilder(1024);
+		private static StringBuilder _resultStringBuilder = new StringBuilder(1024);
 		//modified from https://stackoverflow.com/questions/6275980/string-replace-ignoring-case
+
+
+		
+		public static Int32 Latency()
+		{
+			Int32 returnValue = 0;
+			Int32 result = MQ.Query<Int32>("${EverQuest.Ping}");
+			if(result>0)
+			{
+				returnValue = result;
+			}
+			return returnValue;
+		}
+		
 		public static string ArgsToCommand(List<String> args)
 		{
-			resultStringBuilder.Clear();
+			_resultStringBuilder.Clear();
 			foreach (var arg in args)
 			{
 				if (arg.Contains(" "))
 				{
 					//need to wrap it with quotes if it has spaces
-					resultStringBuilder.Append($"\"{arg}\" ");
+					_resultStringBuilder.Append($"\"{arg}\" ");
 				}
 				else
 				{
-					resultStringBuilder.Append($"{arg} ");
+					_resultStringBuilder.Append($"{arg} ");
 				}
 
 			}
-			return resultStringBuilder.ToString().Trim();
+			return _resultStringBuilder.ToString().Trim();
 		}
 		public static void PutOriginalTargetBackIfNeeded(Int32 targetid)
         {
@@ -91,7 +108,7 @@ namespace E3Core.Utility
                 throw new ArgumentException("String cannot be of zero length.");
             }
 
-            resultStringBuilder.Clear();
+            _resultStringBuilder.Clear();
           
             // Analyze the replacement: replace or remove.
             bool isReplacementNullOrEmpty = string.IsNullOrEmpty(newValue);
@@ -107,13 +124,13 @@ namespace E3Core.Utility
                 bool isNothingToAppend = charsUntilReplacment == 0;
                 if (!isNothingToAppend)
                 {
-                    resultStringBuilder.Append(str, startSearchFromIndex, charsUntilReplacment);
+                    _resultStringBuilder.Append(str, startSearchFromIndex, charsUntilReplacment);
                 }
 
                 // Process the replacement.
                 if (!isReplacementNullOrEmpty)
                 {
-                    resultStringBuilder.Append(newValue);
+                    _resultStringBuilder.Append(newValue);
                 }
                 // Prepare start index for the next search.
                 // This needed to prevent infinite loop, otherwise method always start search 
@@ -126,13 +143,13 @@ namespace E3Core.Utility
                     // It is end of the input string: no more space for the next search.
                     // The input string ends with a value that has already been replaced. 
                     // Therefore, the string builder with the result is complete and no further action is required.
-                    return resultStringBuilder.ToString();
+                    return _resultStringBuilder.ToString();
                 }
             }
             // Append the last part to the result.
             int charsUntilStringEnd = str.Length - startSearchFromIndex;
-            resultStringBuilder.Append(str, startSearchFromIndex, charsUntilStringEnd);
-            return resultStringBuilder.ToString();
+            _resultStringBuilder.Append(str, startSearchFromIndex, charsUntilStringEnd);
+            return _resultStringBuilder.ToString();
         }
 
 		public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> source, Random rng)
@@ -186,6 +203,7 @@ namespace E3Core.Utility
                 {
                     
                     e3util.NavToSpawnID(targetID);
+					return;
                     //exit from TryMoveToTarget if we've reached the target
                     if(MQ.Query<Double>("${Target.Distance}") < E3.GeneralSettings.Movement_NavStopDistance)
                     {
@@ -236,6 +254,12 @@ namespace E3Core.Utility
             }
 
         }
+		public static void SetXTargetSlotToAutoHater(Int32 slot)
+		{
+			MQ.Cmd($"/squelch /xtarg set {slot} ET");
+			MQ.Delay(100);
+			MQ.Cmd($"/squelch /xtarg set {slot} AH");
+		}
         public static bool TargetIsPCOrPCPet()
         {
             Spawn ct;
@@ -269,6 +293,23 @@ namespace E3Core.Utility
 
             return false;
         }
+		
+
+		public static bool InMyGuild(string person)
+        {
+		
+			if(MQ.Query<bool>($"${{Spawn[{person}].Guild.Equal[${{Me.Guild}}]}}"))
+			{
+				return true;
+			}
+			//check for guildlist.txt if it exists
+			if(Setup.GuildListMembers.Count>0 && Setup.GuildListMembers.Contains(person,StringComparer.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+
+			return false;
+		}
         public static bool FilterMe(CommandMatch x)
         {
             ////Stop /Only|Soandoso
@@ -437,9 +478,63 @@ namespace E3Core.Utility
                 }
             }
 
-            return !inputSetValue;
-        }
+			if (inputs.Contains("Plate", StringComparer.OrdinalIgnoreCase))
+			{
+				if ((E3.CurrentClass & Class.Plate) == E3.CurrentClass)
+				{
+					returnValue = inputSetValue;
+				}
+			}
+			if (inputs.Contains("Chain", StringComparer.OrdinalIgnoreCase))
+			{
+				if ((E3.CurrentClass & Class.Chain) == E3.CurrentClass)
+				{
+					returnValue = inputSetValue;
+				}
+			}
+			if (inputs.Contains("Leather", StringComparer.OrdinalIgnoreCase))
+			{
+				if ((E3.CurrentClass & Class.Leather) == E3.CurrentClass)
+				{
+					returnValue = inputSetValue;
+				}
+			}
+			if (inputs.Contains("Silk", StringComparer.OrdinalIgnoreCase))
+			{
+				if ((E3.CurrentClass & Class.Silk) == E3.CurrentClass)
+				{
+					returnValue = inputSetValue;
+				}
+			}
+			
 
+			return !inputSetValue;
+        }
+        public static bool IsEQLive()
+        {
+            return E3.MQBuildVersion != MQBuild.EMU;
+
+		}
+        public static bool IsEQEMU()
+        {
+            return E3.MQBuildVersion == MQBuild.EMU;
+        }
+        public static string NumbersToString(List<Int32> numbers, char delim)
+        {
+            _resultStringBuilder.Clear();
+            foreach(Int32 number in numbers)
+            {
+
+                if(_resultStringBuilder.Length > 0)
+                {
+                    _resultStringBuilder.Append(delim);
+                }
+               
+				_resultStringBuilder.Append(number.ToString());
+			}
+            return _resultStringBuilder.ToString();
+
+        }
         public static void StringsToNumbers(string s, char delim, List<Int32> list)
         {
             List<int> result = list;
@@ -495,7 +590,7 @@ namespace E3Core.Utility
                     string tstring = s.Substring(start, end - start);
                     StringsToNumbers(tstring, ',', _buffInfoTempList);
                     result[(int)_buffInfoTempList[0]] = _buffInfoTempList[1];
-		    start = end + 1;
+					start = end + 1;
 				}
 				end++;
 			}
@@ -576,55 +671,46 @@ namespace E3Core.Utility
 
         }
 
-        public static void PrintTimerStatus(Dictionary<Int32, SpellTimer> timers, ref Int64 printTimer, string Caption, Int64 delayInMS = 10000)
+        public static void PrintTimerStatus(Dictionary<Int32, SpellTimer> timers,  string Caption)
         {
-            //Printing out debuff timers
-            if (printTimer < Core.StopWatch.ElapsedMilliseconds)
+            if (timers.Count > 0)
             {
-                if (timers.Count > 0)
+                MQ.Write($"\at{Caption}");
+                MQ.Write("\aw===================");
+            }
+
+            foreach (var kvp in timers)
+            {
+                foreach (var kvp2 in kvp.Value.Timestamps)
                 {
-                    MQ.Write($"\at{Caption}");
-                    MQ.Write("\aw===================");
-
-
-                }
-
-                foreach (var kvp in timers)
-                {
-                    foreach (var kvp2 in kvp.Value.TimestampBySpellDuration)
+                    Data.Spell spell;
+                    if (Spell._loadedSpells.TryGetValue(kvp2.Key, out spell))
                     {
-                        Data.Spell spell;
-                        if (Spell._loadedSpells.TryGetValue(kvp2.Key, out spell))
+                        Spawn s;
+                        if (_spawns.TryByID(kvp.Value.MobID, out s))
                         {
-                            Spawn s;
-                            if (_spawns.TryByID(kvp.Value.MobID, out s))
-                            {
-                                MQ.Write($"\ap{s.CleanName} \aw: \ag{spell.CastName} \aw: {(kvp2.Value - Core.StopWatch.ElapsedMilliseconds) / 1000} seconds");
-
-                            }
+                            MQ.Write($"\ap{s.CleanName} \aw: \ag{spell.CastName} \aw: {(kvp2.Value - Core.StopWatch.ElapsedMilliseconds) / 1000} seconds");
 
                         }
-                        else
+                    }
+                    else
+                    {
+                        Spawn s;
+                        if (_spawns.TryByID(kvp.Value.MobID, out s))
                         {
-                            Spawn s;
-                            if (_spawns.TryByID(kvp.Value.MobID, out s))
-                            {
-                                MQ.Write($"\ap{s.CleanName} \aw: \agspellid:{kvp2.Key} \aw: {(kvp2.Value - Core.StopWatch.ElapsedMilliseconds) / 1000} seconds");
-
-                            }
+                            MQ.Write($"\ap{s.CleanName} \aw: \agspellid:{kvp2.Key} \aw: {(kvp2.Value - Core.StopWatch.ElapsedMilliseconds) / 1000} seconds");
 
                         }
 
                     }
                 }
-                if (timers.Count > 0)
-                {
-                    MQ.Write("\aw===================");
-
-                }
-                printTimer = Core.StopWatch.ElapsedMilliseconds + delayInMS;
+            }
+            if (timers.Count > 0)
+            {
+                MQ.Write("\aw===================");
 
             }
+          
         }
         public static bool ClearCursor()
         {
@@ -695,6 +781,9 @@ namespace E3Core.Utility
         {
             using(_log.Trace())
             {
+                //incase this changes at runtime
+                MaxBuffSlots = MQ.Query<Int32>("${Me.MaxBuffSlots}");
+
 				buffInfoStringBuilder.Clear();
 				//lets look for a partial match.
 				for (Int32 i = 1; i <= MaxBuffSlots; i++)
@@ -808,12 +897,17 @@ namespace E3Core.Utility
         }
         public static string GetLocalIPAddress()
         {
+            if (!string.IsNullOrWhiteSpace(E3.GeneralSettings.General_Networking_LocalIPOverride))
+            {
+                return E3.GeneralSettings.General_Networking_LocalIPOverride;
+            }
+
 			//https://stackoverflow.com/questions/6803073/get-local-ip-address
 
 			string localIP;
 			using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
 			{
-				socket.Connect("8.8.8.8", 65530);
+				socket.Connect(E3.GeneralSettings.General_Networking_ExternalIPToQueryForLocal, 65530);
 				IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
 				localIP = endPoint.Address.ToString();
 			}
@@ -821,8 +915,8 @@ namespace E3Core.Utility
 		}
         public static bool IsShuttingDown()
         {
-
-            if(EventProcessor.CommandList.ContainsKey("/shutdown") && EventProcessor.CommandList["/shutdown"].queuedEvents.Count > 0)
+			NetMQServer.SharedDataClient.ProcessCommands();
+			if (EventProcessor.CommandList.ContainsKey("/shutdown") && EventProcessor.CommandList["/shutdown"].queuedEvents.Count > 0)
             {
                 return true;
             }
@@ -1048,7 +1142,7 @@ namespace E3Core.Utility
             MQ.Cmd($"/nav id {spawnID} distance={stopDistance}");
             
             Int64 endTime = Core.StopWatch.ElapsedMilliseconds + timeoutInMS;
-            MQ.Delay(300);
+            MQ.Delay(600);
 
             while (navPathExists && MQ.Query<int>("${Navigation.Velocity}") > 0)
             {
@@ -1236,5 +1330,264 @@ namespace E3Core.Utility
             }
 
         }
-    }
+		public static void ToggleBooleanSetting(ref bool booleanObject, string Name, List<string> args)
+		{
+			if (args.Count > 0)
+			{
+				if (args[0].Equals("off", StringComparison.OrdinalIgnoreCase))
+				{
+					if (booleanObject)
+					{
+						booleanObject = false;
+						E3.Bots.Broadcast($"\agTurning off {Name}");
+					}
+				}
+				else if (args[0].Equals("on", StringComparison.OrdinalIgnoreCase))
+				{
+					if (!booleanObject)
+					{
+						booleanObject = true;
+						E3.Bots.Broadcast($"\arTurning on {Name}!");
+
+					}
+				}
+			}
+			else
+			{
+				booleanObject = booleanObject ? false : true;
+				if (booleanObject) E3.Bots.Broadcast($"\ag{Name} On");
+				if (!booleanObject) E3.Bots.Broadcast($"\ar{Name} Off");
+
+			}
+		}
+		public static List<Data.Spell> ListAllActiveAA()
+        {
+			//using (_log.Trace("AA List Call"))
+			{
+				List<Data.Spell> returnValue = new List<Data.Spell>();
+				for(Int32 i=0;i<10000;i++)
+				{
+					string spellName = MQ.Query<String>($"${{Me.AltAbility[{i}].Name}}");
+					if(spellName!="NULL")
+					{
+						var spell = new Data.Spell(spellName);
+						if(spell.CastType== CastingType.AA)
+						{
+							returnValue.Add(spell);
+						}
+					}
+				}
+				return returnValue;
+			}
+		}
+		
+		public static List<Data.Spell> ListAllActiveSkills()
+		{
+			
+				List<Data.Spell> returnValue = new List<Data.Spell>();
+				for (Int32 i = 0; i < Skills.IDToName.Count; i++)
+				{
+					bool haveSkill = MQ.Query<bool>($"${{Me.Ability[{i}]}}");
+					if (haveSkill)
+					{
+						var spell = new Data.Spell(Skills.IDToName[i]);
+						if (spell.CastType == CastingType.Ability)
+						{
+							returnValue.Add(spell);
+						}
+					}
+				}
+				return returnValue;
+			
+			
+		}
+		public static List<Data.Spell> ListAllBookSpells()
+        {
+			List<Data.Spell> returnValue = new List<Data.Spell>();
+			for (Int32 i = 0; i < 1120; i++)
+			{
+				string spellName = MQ.Query<String>($"${{Me.Book[{i}].Name}}");
+				if (spellName != "NULL")
+				{
+					var spell = new Data.Spell(spellName);
+					if (spell.CastType == CastingType.Spell)
+					{
+						returnValue.Add(spell);
+					}
+				}
+			}
+			return returnValue;
+		}
+		
+		public static List<Data.Spell> ListAllDiscData()
+		{
+			List<Data.Spell> returnValue = new List<Data.Spell>();
+			for (Int32 i = 1; i < 10000; i++)
+			{
+				string spellName = MQ.Query<String>($"${{Me.CombatAbility[{i}].Name}}");
+				if (spellName != "NULL")
+				{
+					var spell = new Data.Spell(spellName);
+					if (spell.CastType == CastingType.Disc)
+					{
+						returnValue.Add(spell);
+					}
+				}
+                else
+                {
+                    break;//no more discs
+                }
+			}
+			return returnValue;
+		}
+		public static List<Data.Spell> ListAllItemWithClickyData()
+		{
+			List<Data.Spell> returnValue = new List<Data.Spell>();
+			for (int i = 0; i <= 22; i++)
+			{
+				string spellName = MQ.Query<string>($"${{Me.Inventory[{i}].Clicky}}");
+
+				if(spellName!="NULL")
+				{
+					string itemName = MQ.Query<string>($"${{Me.Inventory[{i}]}}");
+					var newSpell = new Data.Spell(itemName, null);
+					returnValue.Add(newSpell);
+				}
+			}
+			for (Int32 i = 1; i <= 12; i++)
+			{
+				bool SlotExists = MQ.Query<bool>($"${{Me.Inventory[pack{i}]}}");
+				if (SlotExists)
+				{
+					Int32 ContainerSlots = MQ.Query<Int32>($"${{Me.Inventory[pack{i}].Container}}");
+					if (ContainerSlots > 0)
+					{
+						for (Int32 e = 1; e <= ContainerSlots; e++)
+						{
+							//${Me.Inventory[${itemSlot}].Item[${j}].Name.Equal[${itemName}]}
+							string bagItemSpell = MQ.Query<String>($"${{Me.Inventory[pack{i}].Item[{e}].Clicky}}");
+							if(bagItemSpell!="NULL")
+							{
+								String bagItem = MQ.Query<String>($"${{Me.Inventory[pack{i}].Item[{e}]}}");
+								var newSpell = new Data.Spell(bagItem, null);
+								returnValue.Add(newSpell);
+							}
+						}
+					}
+					else
+					{
+						//its a single item
+						string spellName = MQ.Query<string>($"${{Me.Inventory[pack{i}].Clicky}}");
+
+						if (spellName != "NULL")
+						{
+							string itemName = MQ.Query<string>($"${{Me.Inventory[pack{i}]}}");
+							var newSpell = new Data.Spell(itemName, null);
+							returnValue.Add(newSpell);
+						}
+					}
+				}
+			}
+			return returnValue;
+		}
+
+		public static Dictionary<string,Dictionary<string,FieldInfo>> GetSettingsMappedToInI()
+        {
+            Dictionary<string, Dictionary<string, FieldInfo>> returnValue = new Dictionary<string, Dictionary<string, FieldInfo>>();
+
+
+            //now for some ... reflection
+            var type =E3.CharacterSettings.GetType();
+
+            foreach(var field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+				var customAttributes =field.GetCustomAttributes();
+                string section = String.Empty;
+                string key = String.Empty;
+
+				foreach (var attribute in customAttributes)
+				{
+                    if(attribute is INI_SectionAttribute)
+                    {
+                        var tattribute = ((INI_SectionAttribute)attribute);
+
+                        section = tattribute.Header;
+                        key = tattribute.Key;
+						Dictionary<string, FieldInfo> sectionKeys;
+						if (!returnValue.TryGetValue(section, out sectionKeys))
+						{
+							sectionKeys = new Dictionary<string, FieldInfo>();
+							returnValue.Add(section, sectionKeys);
+						}
+						sectionKeys.Add(key, field);
+					}
+					if (attribute is INI_Section2Attribute)
+					{
+						var tattribute = ((INI_Section2Attribute)attribute);
+
+						section = tattribute.Header;
+						key = tattribute.Key;
+						Dictionary<string, FieldInfo> sectionKeys;
+						if (!returnValue.TryGetValue(section, out sectionKeys))
+						{
+							sectionKeys = new Dictionary<string, FieldInfo>();
+							returnValue.Add(section, sectionKeys);
+						}
+						sectionKeys.Add(key, field);
+					}
+				}
+             
+			}
+            return returnValue;
+		}
+		public static bool IsGenericList(this FieldInfo o, Type typeToCheck)
+		{
+			var oType = o.FieldType;
+			if (oType.IsGenericType && (oType.GetGenericTypeDefinition() == typeof(List<>)))
+            {
+				Type itemType = oType.GetGenericArguments()[0]; // use this...
+
+                if(itemType==typeToCheck)
+                {
+                    return true;
+                }
+
+			}
+			return false;
+		}
+		public static bool IsGenericDictonary(this FieldInfo o, Type keyTypeToCheck,Type valueTypeToCheck)
+		{
+			var oType = o.FieldType;
+			if (oType.IsGenericType && (oType.GetGenericTypeDefinition() == typeof(Dictionary<,>)))
+			{
+				Type keyType = oType.GetGenericArguments()[0]; // use this...
+                Type valueType = oType.GetGenericArguments()[1];
+
+				if (keyType == keyTypeToCheck && valueTypeToCheck ==valueType)
+				{
+					return true;
+				}
+
+			}
+			return false;
+		}
+		public static bool IsGenericSortedDictonary(this FieldInfo o, Type keyTypeToCheck, Type valueTypeToCheck)
+		{
+			var oType = o.FieldType;
+			if (oType.IsGenericType && (oType.GetGenericTypeDefinition() == typeof(SortedDictionary<,>)))
+			{
+				Type keyType = oType.GetGenericArguments()[0]; // use this...
+				Type valueType = oType.GetGenericArguments()[1];
+
+				if (keyType == keyTypeToCheck && valueTypeToCheck == valueType)
+				{
+					return true;
+				}
+
+			}
+			return false;
+		}
+		
+
+	}
 }

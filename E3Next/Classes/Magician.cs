@@ -2,6 +2,7 @@
 using E3Core.Processors;
 using E3Core.Settings;
 using E3Core.Utility;
+using E3NextUI;
 using MonoCore;
 using System;
 using System.Collections.Generic;
@@ -29,7 +30,12 @@ namespace E3Core.Classes
         private static string _focusItem = "Folded Pack of Enibik's Heirlooms";
         private static string _weaponBag = "Pouch of Quellious";
         private static string _armorOrHeirloomBag = "Phantom Satchel";
-        private static Dictionary<string, string> _weaponMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+		private static string _dskGloveItem = "Glyphwielder's Ascendant Gloves of the Summoner";
+		private static string _dskCodex = "Codex of Minion's Materiel";
+        private static Spell _dskGloveSpell = null;
+		private static Spell _dskCodexSpell = null;
+
+		private static Dictionary<string, string> _weaponMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             {"Fire", "Summoned: Fist of Flame"},
             {"Water", "Summoned: Orb of Chilling Water" },
             {"Shield", "Summoned: Buckler of Draining Defense" },
@@ -77,9 +83,9 @@ namespace E3Core.Classes
         /// Accepts a pet equipment request.
         /// </summary>
         [SubSystemInit]
-        public static void PetEquipmentRequest()
+        public static void Magician_PetEquipmentRequest()
         {
-            if (E3.CurrentClass != Class.Magician)
+            if (E3.CurrentClass != Class.Magician || e3util.IsEQLive())
             {
                 return;
             }
@@ -87,13 +93,26 @@ namespace E3Core.Classes
             var armPetEvents = new List<string> { "(.+) tells you, 'armpet'", "(.+) tells you, 'armpet (.+)'", "(.+) tells the group, 'armpet (.+)'", };
             EventProcessor.RegisterEvent("ArmPet", armPetEvents, (x) =>
             {
+                //auto reply on live is dangerous, disable.
+                if (e3util.IsEQLive()) return;
+
                 if (x.match.Groups.Count <= 1)
                 {
                     return;
                 }
 
                 _requester = x.match.Groups[1].ToString();
-                if (E3.CharacterSettings.IgnorePetWeaponRequests)
+
+				if(e3util.InMyGuild(_requester) && !E3.CharacterSettings.Magican_AllowPetRequestWeaponsBypass)
+				{
+					if (E3.CharacterSettings.IgnorePetWeaponRequests)
+					{
+						MQ.Cmd($"/t {_requester} Sorry, I am not currently accepting requests for pet weapons even from Guild Mates");
+						return;
+					}
+
+				}
+				else if (!e3util.InMyGuild(_requester) && E3.CharacterSettings.IgnorePetWeaponRequests)
                 {
                     MQ.Cmd($"/t {_requester} Sorry, I am not currently accepting requests for pet weapons");
                     return;
@@ -142,17 +161,26 @@ namespace E3Core.Classes
                         return;
                     }
 
-                    if (_spawns.Get().First(w => w.ID == theirPetId).Distance > 50)
+                    if(_spawns.TryByID(theirPetId, out var petSpawn))
                     {
-                        MQ.Cmd($"/t {_requester} Your pet is too far away!");
-                        return;
-                    }
+                        if (petSpawn.Distance>30)
+                        {
+							MQ.Cmd($"/t {_requester} Your pet is too far away!");
+							return;
+						}
+                        if(petSpawn.Level==1)
+                        {
 
-                    if (_spawns.Get().First(w => w.ID == theirPetId).Level == 1)
-                    {
-                        MQ.Cmd($"/t {_requester} Your pet is just a familiar!");
-                        return;
+							MQ.Cmd($"/t {_requester} Your pet is just a familiar!");
+							return;
+						}
                     }
+                    else
+                    {
+						MQ.Cmd($"/t {_requester} Cannot find your pet in zone!");
+						return;
+
+					}
 
                     ArmPet(theirPetId, $"{weaponSplit[0]}|{weaponSplit[1]}");
                 }
@@ -171,7 +199,79 @@ namespace E3Core.Classes
 
                 ArmPets();
             });
-        }
+            if(e3util.IsEQEMU())
+            {
+
+            }
+			armPetEvents = new List<string> { "(?i)(.+) tells you, 'DSK'", "(?i)(.+) tells the group, 'DSK'", };
+			EventProcessor.RegisterEvent("ArmPetDSK", armPetEvents, x =>
+			{
+				if (e3util.InMyGuild(_requester) && !E3.CharacterSettings.Magican_AllowPetRequestWeaponsBypass)
+				{
+					if (E3.CharacterSettings.IgnorePetWeaponRequests)
+					{
+						MQ.Cmd($"/t {_requester} Sorry, I am not currently accepting requests for pet weapons even from Guild Mates");
+						return;
+					}
+
+				}
+				else if (!e3util.InMyGuild(_requester) && E3.CharacterSettings.IgnorePetWeaponRequests)
+				{
+					MQ.Cmd($"/t {_requester} Sorry, I am not currently accepting requests for pet weapons");
+					return;
+				}
+
+				var hasDskGloves = MQ.Query<bool>($"${{FindItem[{_dskGloveItem}]}}");
+
+                if (hasDskGloves)
+                {
+                    if (_dskGloveSpell == null)
+                    {
+                        _dskGloveSpell = new Spell(_dskGloveItem);
+                    }
+                    _requester = x.match.Groups[1].ToString();
+                    if (_spawns.TryByName(_requester, out var requesterSpawn))
+                    {
+                        var theirPetId = requesterSpawn.PetID;
+                        if (theirPetId < 0)
+                        {
+                            MQ.Cmd($"/t {_requester} You don't have a pet to equip!");
+                            return;
+                        }
+						if (_spawns.TryByID(theirPetId, out var petSpawn))
+						{
+							if (petSpawn.Distance > 30)
+							{
+								MQ.Cmd($"/t {_requester} Your pet is too far away!");
+								return;
+							}
+							if (petSpawn.Level == 1)
+							{
+
+								MQ.Cmd($"/t {_requester} Your pet is just a familiar!");
+								return;
+							}
+						}
+						else
+						{
+							MQ.Cmd($"/t {_requester} Cannot find your pet in zone!");
+							return;
+
+						}
+						if (!Casting.CheckReady(_dskGloveSpell))
+                        {
+                            MQ.Cmd($"/t {_requester} Is in cooldown, try again shortly.");
+                            return;
+                        }
+                        MQ.Cmd($"/t {_requester} I hear you I hear you one moment please....");
+                        if (Casting.CheckReady(_dskGloveSpell))
+                        {
+                            Casting.Cast(theirPetId, _dskGloveSpell);
+                        }
+                    }
+                }
+			});
+		}
 
 
         /// <summary>
@@ -327,84 +427,148 @@ namespace E3Core.Classes
         }
 
         private static void ArmPet(int petId, string weapons)
-        {
-            // so we can move back
-            var currentX = MQ.Query<double>("${Me.X}");
+		{
+			//all this code needs to be abstracted out as it is Laz specific
+		
+			var hasDskGloves = MQ.Query<bool>($"${{FindItem[{_dskGloveItem}]}}");
+			var hasDskCodex = MQ.Query<bool>($"${{FindItem[{_dskCodex}]}}");
+
+			// so we can move back
+			var currentX = MQ.Query<double>("${Me.X}");
             var currentY = MQ.Query<double>("${Me.Y}");
             var currentZ = MQ.Query<double>("${Me.Z}");
-
-            if (!GiveWeapons(petId, weapons ?? "Water|Fire"))
-            {
-                if (_isExternalRequest)
-                {
-                    MQ.Cmd($"/t {_requester} There was an issue with pet weapon summoning and we are unable to continue.");
-                }
-                else
-                {
-                    E3.Bots.Broadcast("\arThere was an issue with pet weapon summoning and we are unable to continue.");
-                }
-
-                // move back to my original location
-                e3util.TryMoveToLoc(currentX, currentY, currentZ);
-                _isExternalRequest = false;
-
-                return;
-            }
 			Casting.TrueTarget(petId);
+
+			var myPetID = MQ.Query<Int32>("${Me.Pet.ID}");
+		
+			try
+			{
+				if (petId == myPetID && hasDskCodex)
+				{
+					if (_dskCodexSpell == null)
+					{
+						_dskCodexSpell = new Spell(_dskCodex);
+					}
+					//if not ready, wait till its ready
+					Int32 counter = 0;
+					while (!Casting.CheckReady(_dskCodexSpell))
+					{
+						//if more than 10 seconds, break out
+						if (counter > 100) break;
+						MQ.Delay(100);
+						counter++;
+					}
+					if (Casting.CheckReady(_dskCodexSpell))
+					{
+						Casting.Cast(petId, _dskCodexSpell);
+					}
+				}
+				if (hasDskGloves)
+				{
+					if (_dskGloveSpell == null)
+					{
+						_dskGloveSpell = new Spell(_dskGloveItem);
+					}
+				
+					//if not ready, wait till its ready
+					Int32 counter = 0;
+					while (!Casting.CheckReady(_dskGloveSpell))
+					{
+						//if more than 10 seconds, break out
+						if (counter > 100) break;
+						MQ.Delay(100);
+						counter++;
+					}
+
+					if (Casting.CheckReady(_dskGloveSpell))
+					{
+						Casting.Cast(petId, _dskGloveSpell);
+					}
+				}
+				else 
+				{
+					if (!GiveWeapons(petId, weapons ?? "Water|Fire"))
+					{
+						if (_isExternalRequest)
+						{
+							MQ.Cmd($"/t {_requester} There was an issue with pet weapon summoning and we are unable to continue.");
+
+						}
+						else
+						{
+							E3.Bots.Broadcast("\arThere was an issue with pet weapon summoning and we are unable to continue.");
+
+						}
+						return;
+					}
+				}
+				//we are done if its our pet and we have applied the codex
+				if (petId == myPetID && hasDskCodex) return;
+
+				var spell = new Spell(_armorSpell);
+				Casting.MemorizeSpell(spell);
+				MQ.Delay(10000, $"${{Me.SpellReady[${{Me.Gem[{spell.SpellGem}].Name}}]}}");
+
+				Int32 castAttempts = 0;
+				if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
+				{
+					while (Casting.Cast(petId, spell) == CastReturn.CAST_FIZZLE)
+					{
+						if (castAttempts > 7) break;
+						MQ.Delay(1500);
+						castAttempts++;
+					}
+				}
+				castAttempts = 0;
+				spell = new Spell(_focusSpell);
+				Casting.MemorizeSpell(spell);
+				MQ.Delay(10000, $"${{Me.SpellReady[${{Me.Gem[{spell.SpellGem}].Name}}]}}");
+
+				if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
+				{
+					while (Casting.Cast(petId, spell) == CastReturn.CAST_FIZZLE)
+					{
+						if (castAttempts > 7) break;
+						MQ.Delay(1500);
+						castAttempts++;
+					}
+				}
+
+
+				var pet = _spawns.Get().FirstOrDefault(f => f.ID == petId);
+				if (pet != null)
+				{
+					if (_isExternalRequest)
+					{
+						MQ.Cmd($"/t {_requester} Finished arming {pet.CleanName}");
+					}
+					else
+					{
+						E3.Bots.Broadcast($"\agFinishing arming {pet.CleanName}");
+					}
+				}
+			}
+			finally
+			{ // move back to my original location
+				e3util.TryMoveToLoc(currentX, currentY, currentZ);
+				_isExternalRequest = false;
+
+			}
+			
+
            
-			var spell = new Spell(_armorSpell);
-            Int32 castAttempts = 0;
-            if(Casting.CheckReady(spell) && Casting.CheckMana(spell))
-			{
-				while(Casting.Cast(petId, spell) == CastReturn.CAST_FIZZLE)
-				{
-                    if (castAttempts > 7) break;
-					MQ.Delay(1500);
-                    castAttempts++;
-				}
-			}
-			castAttempts = 0;
-			spell = new Spell(_focusSpell);
-			if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
-			{
-				while (Casting.Cast(petId, spell) == CastReturn.CAST_FIZZLE)
-				{
-					if (castAttempts > 7) break;
-					MQ.Delay(1500);
-					castAttempts++;
-				}
-			}
-
-            var dskGloveItem = "Glyphwielder's Ascendant Gloves of the Summoner";
-            var hasDskGloves = MQ.Query<bool>($"${{FindItem[{dskGloveItem}]}}");
-            if (hasDskGloves)
-            {
-                MQ.Cmd($"/useitem {dskGloveItem}");
-            }
-
-			var pet = _spawns.Get().FirstOrDefault(f => f.ID == petId);
-            if (pet != null)
-            {
-                if (_isExternalRequest)
-                {
-                    MQ.Cmd($"/t {_requester} Finished arming {pet.CleanName}");
-                }
-                else
-                {
-                    E3.Bots.Broadcast($"\agFinishing arming {pet.CleanName}");
-                }
-            }
-
-            // move back to my original location
-            e3util.TryMoveToLoc(currentX, currentY, currentZ);
-            _isExternalRequest = false;
         }
 
         private static bool GiveWeapons(int petId, string weaponString)
         {
-            var weapons = weaponString.Split('|');
+			if(String.IsNullOrWhiteSpace(weaponString) || !weaponString.Contains('|'))
+			{
+				weaponString = "Water|Fire";
+			}
+
+			var weapons = weaponString.Split('|');
             var weaponsToEquip = new List<string>();
-            _weaponMap.TryGetValue(weapons[0], out var primary);
+		    _weaponMap.TryGetValue(weapons[0], out var primary);
             _weaponMap.TryGetValue(weapons[1], out var secondary);
 
             if (primary != null) weaponsToEquip.Add(primary);
@@ -511,14 +675,17 @@ namespace E3Core.Classes
             var id = E3.CurrentId;
             Casting.TrueTarget(id);
             var spell = new Spell(itemToSummon);
-            if (Casting.CheckReady(spell))
+            if (Casting.CheckReady(spell) && Casting.CheckMana(spell))
             {
                 int cursorId = 0;
                 // try several times to summon
                 for (int i = 1; i <= 5; i++)
                 {
-                    Casting.Cast(id, spell);
-                    e3util.YieldToEQ();
+                    if(Casting.Cast(id, spell)== CastReturn.CAST_FIZZLE)
+                    {
+                        continue;
+                    }
+                    MQ.Delay(3000, "${Cursor.ID}");
                     cursorId = MQ.Query<int>("${Cursor.ID}");
                     if (cursorId > 0) break;
                 }

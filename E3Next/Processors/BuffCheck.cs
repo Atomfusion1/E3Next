@@ -46,12 +46,16 @@ namespace E3Core.Processors
 		//private static Int64 _printoutTimer;
 		private static Data.Spell _selectAura = null;
 		private static Int64 _nextBuffCheck = 0;
-
+		[ExposedData("BuffCheck", "BuffCheckInterval")]
 		private static Int64 _nextBuffCheckInterval = 1000;
+		[ExposedData("BuffCheck", "XPBuffs")]
 		private static List<Int32> _xpBuffs = new List<int>() { 42962 /*xp6*/, 42617 /*xp5*/, 42616 /*xp4*/};
+		[ExposedData("BuffCheck", "GMBuffs")]
 		private static List<Int32> _gmBuffs = new List<int>() { 34835, 35989, 35361, 25732, 34567, 36838, 43040, 36266, 36423 };
 		private static Int64 _nextBlockBuffCheck = 0;
-		private static Int64 _nextBlockBuffCheckInterval = 1000;
+		[ExposedData("BuffCheck", "BlockBuffCheckInterval")]
+		private static Int64 _nextBlockBuffCheckInterval = 250;
+		[ExposedData("BuffCheck", "InitAuras")]
 		static bool _initAuras = false;
 
 		public static void AddToBuffCheckTimer(int millisecondsToAdd)
@@ -60,13 +64,15 @@ namespace E3Core.Processors
 		}
 
 		[SubSystemInit]
-		public static void Init()
+		public static void BuffCheck_Init()
 		{
 			RegisterEvents();
 		}
 		public static void Reset()
 		{
-			foreach(var pair in _buffTimers)
+			_initAuras = false;
+			_selectAura = null;
+			foreach (var pair in _buffTimers)
 			{
 				pair.Value.Dispose();
 
@@ -133,7 +139,7 @@ namespace E3Core.Processors
 					{
 						MQ.Write("\aoBlocked Spell List");
 						MQ.Write("\aw==================");
-						foreach (var spell in E3.CharacterSettings.BockedBuffs)
+						foreach (var spell in E3.CharacterSettings.BlockedBuffs)
 						{
 							MQ.Write("\at" + spell.SpellName);
 						}
@@ -143,8 +149,8 @@ namespace E3Core.Processors
 		}
 		public static void BlockBuffRemove(string spellName)
 		{
-			List<Spell> newList = E3.CharacterSettings.BockedBuffs.Where(y => !y.SpellName.Equals(spellName, StringComparison.OrdinalIgnoreCase)).ToList();
-			E3.CharacterSettings.BockedBuffs = newList;
+			List<Spell> newList = E3.CharacterSettings.BlockedBuffs.Where(y => !y.SpellName.Equals(spellName, StringComparison.OrdinalIgnoreCase)).ToList();
+			E3.CharacterSettings.BlockedBuffs = newList;
 			E3.CharacterSettings.SaveData();
 
 		}
@@ -152,7 +158,7 @@ namespace E3Core.Processors
 		{
 			//check if it exists
 			bool exists = false;
-			foreach (var spell in E3.CharacterSettings.BockedBuffs)
+			foreach (var spell in E3.CharacterSettings.BlockedBuffs)
 			{
 
 				if (spell.SpellName.Equals(spellName, StringComparison.OrdinalIgnoreCase))
@@ -165,7 +171,7 @@ namespace E3Core.Processors
 				Spell s = new Spell(spellName);
 				if (s.SpellID > 0)
 				{
-					E3.CharacterSettings.BockedBuffs.Add(s);
+					E3.CharacterSettings.BlockedBuffs.Add(s);
 					E3.CharacterSettings.SaveData();
 				}
 			}
@@ -274,8 +280,17 @@ namespace E3Core.Processors
 			if (!e3util.ShouldCheck(ref _nextBlockBuffCheck, _nextBlockBuffCheckInterval)) return;
 
 
-			foreach (var spell in E3.CharacterSettings.BockedBuffs)
+			foreach (var spell in E3.CharacterSettings.BlockedBuffs)
 			{
+
+				if (!String.IsNullOrWhiteSpace(spell.Ifs))
+				{
+					if (!Casting.Ifs(spell))
+					{
+						continue;
+					}
+				}
+
 				if (spell.SpellID > 0)
 				{
 					if (MQ.Query<bool>($"${{Me.Buff[{spell.CastName}]}}") || MQ.Query<bool>($"${{Me.Song[{spell.CastName}]}}"))
@@ -487,6 +502,8 @@ namespace E3Core.Processors
 					if (Assist.IsAssisting || Nukes.PBAEEnabled)
 					{
 						BuffBots(E3.CharacterSettings.CombatBuffs);
+						BuffBots(E3.CharacterSettings.CombatPetBuffs,true);
+						BuffBots(E3.CharacterSettings.CombatPetOwnerBuffs, true);
 					}
 
 					if ((!Movement.IsMoving() && String.IsNullOrWhiteSpace(Movement.FollowTargetName)) || Movement.StandingStillForTimePeriod())
@@ -511,7 +528,7 @@ namespace E3Core.Processors
 							//using (_log.Trace("Buffs-Pet"))
 							{
 								if (!E3.ActionTaken) BuffBots(E3.CharacterSettings.PetBuffs, true);
-
+								if (!E3.ActionTaken) BuffBots(E3.CharacterSettings.PetOwnerBuffs, true);
 							}
 
 						}
@@ -1354,6 +1371,13 @@ namespace E3Core.Processors
 		{
 			if (!E3.CharacterSettings.Buffs_CastAuras) return;
 			if (e3util.IsActionBlockingWindowOpen()) return;
+
+
+			if (E3.CharacterSettings.Buffs_Auras.Count > 0)
+			{
+				_selectAura = E3.CharacterSettings.Buffs_Auras[0];
+			}
+
 			if (_selectAura == null)
 			{
 				if (!_initAuras)
@@ -1378,7 +1402,7 @@ namespace E3Core.Processors
 				if (currentAura != "NULL")
 				{
 					//we already have an aura, check if its different
-					if (currentAura.Equals(_selectAura.SpellName, StringComparison.OrdinalIgnoreCase))
+					//if (currentAura.Equals(_selectAura.SpellName, StringComparison.OrdinalIgnoreCase))
 					{
 						//don't need to do anything
 						return;
@@ -1389,7 +1413,7 @@ namespace E3Core.Processors
 
 				//need to put on new aura
 				Int32 meID = E3.CurrentId;
-				if (_selectAura.CastType == CastType.Spell)
+				if (_selectAura.CastType == CastingType.Spell)
 				{
 					//this is a spell, need to mem, then cast. 
 					if (Casting.CheckReady(_selectAura) && Casting.CheckMana(_selectAura))
@@ -1399,7 +1423,7 @@ namespace E3Core.Processors
 
 
 				}
-				else if (_selectAura.CastType == CastType.Disc)
+				else if (_selectAura.CastType == CastingType.Disc)
 				{
 					Int32 endurance = MQ.Query<Int32>("${Me.Endurance}");
 					if (_selectAura.EnduranceCost < endurance)
@@ -1432,6 +1456,7 @@ namespace E3Core.Processors
 			"Bloodlust Aura",
 			"Aura of Insight",
 			"Aura of the Muse",
+			"Aura of the Artist",
 			"Aura of the Zealot",
 			"Aura of the Pious",
 			"Aura of Divinity",
@@ -1609,14 +1634,13 @@ namespace E3Core.Processors
 
 			if (!E3.CharacterSettings.BandoBuff_Enabled) return;
 			if (String.IsNullOrWhiteSpace(E3.CharacterSettings.BandoBuff_BuffName)) return;
-			if (String.IsNullOrWhiteSpace(E3.CharacterSettings.BandoBuff_Primary)) return;
-			if (String.IsNullOrWhiteSpace(E3.CharacterSettings.BandoBuff_PrimaryWithoutBuff)) return;
 			if (String.IsNullOrWhiteSpace(E3.CharacterSettings.BandoBuff_BandoName)) return;
 			if (String.IsNullOrWhiteSpace(E3.CharacterSettings.BandoBuff_BandoNameWithoutBuff)) return;
 
 			bool hasBuff = true;
+			bool buffWillStack = MQ.Query<bool>($"${{Spell[{E3.CharacterSettings.BandoBuff_BuffName}].WillLand}}");
 
-			if (E3.CharacterSettings.BandoBuff_BuffName != String.Empty)
+			if (E3.CharacterSettings.BandoBuff_BuffName != String.Empty && buffWillStack)
 			{
 				hasBuff = MQ.Query<bool>($"${{Bool[${{Me.Buff[{E3.CharacterSettings.BandoBuff_BuffName}]}}]}}");
 				if (!hasBuff)
@@ -1624,29 +1648,37 @@ namespace E3Core.Processors
 					hasBuff = MQ.Query<bool>($"${{Bool[${{Me.Song[{E3.CharacterSettings.BandoBuff_BuffName}]}}]}}");
 				}
 			}
+
+			//Debuff code, only activate if either, we cannot land the buff configured or it doesn't exist.
+			//hasbuff is true by default
 			if (hasBuff && Basics.InCombat() && MQ.Query<Int32>("${Target.ID}") > 0)
 			{
 				bool hasDebuff = MQ.Query<bool>($"${{Bool[${{Target.Buff[{E3.CharacterSettings.BandoBuff_DebuffName}]}}]}}");
 				if (!hasDebuff)
 				{
-					bool willStack = MQ.Query<bool>($"${{Spell[{E3.CharacterSettings.BandoBuff_DebuffName}].StacksTarget}}");
+					bool bandoWithoutDeBuffIsActive = MQ.Query<bool>($"${{Me.Bandolier[{E3.CharacterSettings.BandoBuff_BandoNameWithoutDeBuff}].Active}}");
 
-					if (willStack)
+					if(!bandoWithoutDeBuffIsActive)
 					{
-						E3.Bots.Broadcast($"Swapping to {E3.CharacterSettings.BandoBuff_BandoNameWithoutDeBuff}");
+						bool willStack = MQ.Query<bool>($"${{Spell[{E3.CharacterSettings.BandoBuff_DebuffName}].StacksTarget}}");
 
-						MQ.Cmd($"/bando activate {E3.CharacterSettings.BandoBuff_BandoNameWithoutDeBuff}");
-						return;
+						if (willStack)
+						{
+							E3.Bots.Broadcast($"Swapping to {E3.CharacterSettings.BandoBuff_BandoNameWithoutDeBuff}");
+
+							MQ.Cmd($"/bando activate {E3.CharacterSettings.BandoBuff_BandoNameWithoutDeBuff}");
+							return;
+						}
 					}
 				}
 			}
 
-			//we have the debuff or we have the buff.
-			string primaryName = MQ.Query<String>("${Me.Inventory[13]}");
-			string secondaryName = MQ.Query<String>("${Me.Inventory[14]}");
+			bool bandoWhenBuffIsActive = MQ.Query<bool>($"${{Me.Bandolier[{E3.CharacterSettings.BandoBuff_BandoName}].Active}}");
+			bool bandoWithoutBuffIsActive = MQ.Query<bool>($"${{Me.Bandolier[{E3.CharacterSettings.BandoBuff_BandoNameWithoutBuff}].Active}}");
+
 			if (hasBuff)
 			{
-				if (!(String.Equals(primaryName, E3.CharacterSettings.BandoBuff_Primary, StringComparison.OrdinalIgnoreCase) && String.Equals(secondaryName, E3.CharacterSettings.BandoBuff_Secondary, StringComparison.OrdinalIgnoreCase)))
+				if (!bandoWhenBuffIsActive)
 				{
 					E3.Bots.Broadcast($"Swapping to {E3.CharacterSettings.BandoBuff_BandoName}");
 					MQ.Cmd($"/bando activate {E3.CharacterSettings.BandoBuff_BandoName}");
@@ -1654,7 +1686,7 @@ namespace E3Core.Processors
 			}
 			else
 			{
-				if (!(String.Equals(primaryName, E3.CharacterSettings.BandoBuff_PrimaryWithoutBuff, StringComparison.OrdinalIgnoreCase) && String.Equals(secondaryName, E3.CharacterSettings.BandoBuff_SecondaryWithoutBuff, StringComparison.OrdinalIgnoreCase)))
+				if (!bandoWithoutBuffIsActive)
 				{
 					E3.Bots.Broadcast($"Swapping to {E3.CharacterSettings.BandoBuff_BandoNameWithoutBuff}");
 

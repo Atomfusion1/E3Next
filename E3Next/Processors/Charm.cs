@@ -13,16 +13,19 @@ namespace E3Core.Processors
 		private static IMQ MQ = E3.MQ;
 		private static ISpawns _spawns = E3.Spawns;
 
-
+		[ExposedData("Charm", "CharmTimer")]
 		private static Int64 _charmTimer = 0;
+		[ExposedData("Charm", "CharmTargetId")]
 		private static int _charmTargetId = 0;
 
 		private static long _nextCharmCheck = 0;
+		[ExposedData("Charm", "NextCharmRefreshTimeInterval")]
 		private static long _nextCharmRefreshTimeInterval = 500;
+		[ExposedData("Charm", "CharmDebuffDelay")]
 		private static Int32 _charmDebuffDelay = 4000;
 
 		[SubSystemInit]
-		public static void Init()
+		public static void Charm_Init()
 		{
 			InitCharm();
 		}
@@ -34,7 +37,7 @@ namespace E3Core.Processors
 
 
 
-				if (E3.CharacterSettings.Charm_CharmSpell == null)
+				if (E3.CharacterSettings.Charm_CharmSpells.Count==0)
 				{
 					E3.Bots.Broadcast($"\agCharm spell not set in INI file.");
 					return;
@@ -93,7 +96,7 @@ namespace E3Core.Processors
 
 		private static void CharmProcess()
 		{
-			if(E3.CharacterSettings.Charm_CharmSpell==null) return;
+			if (E3.CharacterSettings.Charm_CharmSpells.Count == 0) return;
 
 			if (MQ.Query<int>("${Me.Pet.ID}") == _charmTargetId) return;
 			//enchanter names are invisable men, should probably just change this to petid for other charmers
@@ -152,12 +155,16 @@ namespace E3Core.Processors
 
 			foreach (var spell in E3.CharacterSettings.Charm_CharmOhShitSpells)
 			{
+				if (!Casting.Ifs(spell)) continue;
+
 				if (!Casting.CheckReady(spell)) continue;
 				var result = Casting.Cast(_charmTargetId, spell);
 				if (result != CastReturn.CAST_RESIST) break;
 			}
 			foreach (var spell in E3.CharacterSettings.Charm_SelfDebuffSpells)
 			{
+				if (!Casting.Ifs(spell)) continue;
+
 				Casting.Cast(_charmTargetId, spell);
 			}
 
@@ -170,9 +177,9 @@ namespace E3Core.Processors
 
 			}
 			E3.Bots.Broadcast($"\agDebuffs should have landed; attempting to charm");
-			if (Casting.CheckReady(E3.CharacterSettings.Charm_CharmSpell))
+			if (Casting.CheckReady(E3.CharacterSettings.Charm_CharmSpells[0]))
 			{
-				var castResult = Casting.Cast(_charmTargetId, E3.CharacterSettings.Charm_CharmSpell);
+				var castResult = Casting.Cast(_charmTargetId, E3.CharacterSettings.Charm_CharmSpells[0]);
 				MQ.Delay(200);
 				var petId = MQ.Query<int>("${Me.Pet.ID}");
 
@@ -202,7 +209,7 @@ namespace E3Core.Processors
 		[AdvSettingInvoke]
 		public static void check_Charm()
 		{
-			if (E3.CharacterSettings.Charm_CharmSpell == null) return;
+			if (E3.CharacterSettings.Charm_CharmSpells.Count==0) return;
 
 			if (_charmTargetId == 0) return;
 			if (!e3util.ShouldCheck(ref _nextCharmCheck, _nextCharmRefreshTimeInterval)) return;
@@ -224,20 +231,13 @@ namespace E3Core.Processors
 			}
 			if (MQ.Query<int>("${Me.Pet.ID}") > 0)
 			{
-				foreach (var buff in E3.CharacterSettings.Charm_BadPetBuffs)
-				{
-					var buffIndex = MQ.Query<int>($"${{Me.Pet.Buff[{buff.SpellName}]}}");
-					if (buffIndex > 0)
-					{
-						MQ.Cmd($"/notify PIW_BuffWindow PIW_PetBuff{buffIndex - 1}_Button leftmouseup");
-					}
-				}
+				Pets.removeBuffsIfNecessary(E3.CharacterSettings.Charm_BadPetBuffs);
 			}
 			if (MQ.Query<int>("${Me.Pet.ID}") == _charmTargetId)
 			{
-				if (MQ.Query<bool>($"${{Bool[${{Me.PetBuff[{E3.CharacterSettings.Charm_CharmSpell.CastName}]}}]}}"))
+				if (MQ.Query<bool>($"${{Bool[${{Me.PetBuff[{E3.CharacterSettings.Charm_CharmSpells[0].CastName}]}}]}}"))
 				{
-					Int32 charmDuration = MQ.Query<Int32>($"${{Pet.BuffDuration[{E3.CharacterSettings.Charm_CharmSpell.CastName}].TotalSeconds}}");
+					Int32 charmDuration = MQ.Query<Int32>($"${{Pet.BuffDuration[{E3.CharacterSettings.Charm_CharmSpells[0].CastName}].TotalSeconds}}");
 					if (charmDuration > 60)
 					{
 						if (_charmTimer - Core.StopWatch.ElapsedMilliseconds < 18)

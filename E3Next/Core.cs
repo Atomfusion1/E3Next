@@ -38,7 +38,7 @@ namespace MonoCore
     /// </summary>
     public static class MainProcessor
     {
-        public static IMQ MQ = Core.mqInstance;
+        public static IMQ _mq = Core.mqInstance;
        
         private static Logging _log = Core.logInstance;
         public static string ApplicationName = "";
@@ -81,6 +81,7 @@ namespace MonoCore
                 }
                 catch (Exception ex)
                 {
+				
                     if(ex is ThreadAbort)
 					{
 						Core.IsProcessing = false;
@@ -105,13 +106,23 @@ namespace MonoCore
                     Delay(E3.CharacterSettings.CPU_ProcessLoopDelay);//this calls the reset events and sets the delay to 10ms at min
                 }
             }
-           
-            //E3.Shutdown();
-            MQ.Write("Shutting down E3 Main C# Thread.");
-            MQ.Write("Doing netmq cleanup.");
-            //NetMQConfig.Cleanup(false);
 
-            Core.CoreResetEvent.Set();
+			//E3.Shutdown();
+			_mq.Write("Shutting down E3 Main C# Thread.");
+			_mq.Write("Doing netmq cleanup.");
+			//NetMQConfig.Cleanup(false);
+			if (MQ.DelayedWrites.Count > 0)
+			{
+				while (MQ.DelayedWrites.Count > 0)
+				{
+					string message;
+					if (MQ.DelayedWrites.TryDequeue(out message))
+					{
+						Core.mq_Echo(message);
+					}
+				}
+			}
+			Core.CoreResetEvent.Set();
         }
 
         static public void Delay(Int32 value)
@@ -168,11 +179,11 @@ namespace MonoCore
                 //some filter regular expressions so we can quicly get rid of combat and "has cast a spell" stuff. 
                 //if your app needs them remove these :)
                 System.Text.RegularExpressions.Regex filterRegex = new Regex(@" points of damage\.");
-                _filterRegexes.Add(filterRegex);
-                filterRegex = new Regex(@" points of non-melee damage\.");
-                _filterRegexes.Add(filterRegex);
-                filterRegex = new Regex(@" begins to cast a spell\.");
-                _filterRegexes.Add(filterRegex);
+                //  _filterRegexes.Add(filterRegex);
+                // filterRegex = new Regex(@" points of non-melee damage\.");
+                // _filterRegexes.Add(filterRegex);
+                //filterRegex = new Regex(@" begins to cast a spell\.");
+                // _filterRegexes.Add(filterRegex);
 
                 _regExProcessingTask =Task.Factory.StartNew(() => { ProcessEventsIntoQueues(); }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
                 _isInit = true;
@@ -214,18 +225,32 @@ namespace MonoCore
                         //do filter matching
                         //does it match our filter ? if so we can leave
                         bool matchFilter = false;
-                        //locl this so someone can clear/add more filters are runtime.
-                        lock (_filterRegexes)
+                        
+                        //using contains as live/emu are different ont heir log messages for endings
+                        //so instead of doing endswith + contains, just do contains.
+                        //contains uses an Ordinal compiarson sa well, so should be fairly fast
+                        if (line.Contains("points of damage.") && !line.Contains("(Rampage)")) matchFilter = true;
+						else if (line.Contains("points of non-melee damage.")) matchFilter = true;
+					
+                        //filters are just there in case we need to dynamically add a regex to filter out stuff.
+                        if (!matchFilter)
                         {
-                            foreach (var filter in _filterRegexes)
-                            {
-                                var match = filter.Match(line);
-                                if (match.Success)
-                                {
-                                    matchFilter = true;
-                                    break;
-                                }
-                            }
+                            //needed for live as they have differnt log messages
+                            if(_filterRegexes.Count>0)
+							{
+								lock (_filterRegexes)
+								{
+									foreach (var filter in _filterRegexes)
+									{
+										var match = filter.Match(line);
+										if (match.Success)
+										{
+											matchFilter = true;
+											break;
+										}
+									}
+								}
+							}
                         }
 
                         if (!matchFilter)
@@ -611,6 +636,8 @@ namespace MonoCore
         {
             public String keyName;
             public String command;
+            public String classOwner;
+            public string methodCaller;
             public System.Action<CommandMatch> method;
             public ConcurrentQueue<CommandMatch> queuedEvents = new ConcurrentQueue<CommandMatch>();
         }
@@ -650,12 +677,14 @@ namespace MonoCore
             public string eventName;
             public eventType typeOfEvent=eventType.Unknown;
         }
-        public static bool RegisterCommand(string commandName, Action<CommandMatch> method)
+        public static bool RegisterCommand(string commandName, Action<CommandMatch> method, [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0)
         {
             CommandListItem c = new CommandListItem();
             c.command = commandName;
             c.method = method;
             c.keyName = commandName;
+            c.methodCaller = memberName;
+            c.classOwner = Logging.GetClassName(fileName);
      
             bool returnvalue =  Core.mqInstance.AddCommand(commandName);
      
@@ -680,7 +709,39 @@ namespace MonoCore
             }
 
         }
-        public static void RegisterEvent(string keyName, string pattern, Action<EventMatch> method)
+
+		public static void ClearDynamicEvents()
+		{
+			List<string> eventKeys = EventList.Keys.ToList();
+			foreach(var key in eventKeys)
+			{
+
+				if(key.StartsWith("DynamicEvent_"))
+				{
+					if(EventList.TryRemove(key, out var eventListItem))
+					{
+						//removed item
+						
+					}
+				
+				}
+			}
+
+		}
+		public static void RegisterDynamicEvent(string keyName, string pattern, Action<EventMatch> method)
+		{
+			keyName = "DynamicEvent_" + keyName;
+			EventListItem eventToAdd = new EventListItem();
+			eventToAdd.regexs = new List<Regex>();
+
+			eventToAdd.regexs.Add(new System.Text.RegularExpressions.Regex(pattern));
+			eventToAdd.method = method;
+			eventToAdd.keyName = keyName;
+
+			EventList.TryAdd(keyName, eventToAdd);
+
+		}
+		public static void RegisterEvent(string keyName, string pattern, Action<EventMatch> method)
         {
             EventListItem eventToAdd = new EventListItem();
             eventToAdd.regexs = new List<Regex>();
@@ -810,6 +871,7 @@ namespace MonoCore
         {
 			try
 			{
+				Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
 				_MQ2MonoVersion = Decimal.Parse(Core.mq_GetMQ2MonoVersion());
 			}
 			catch (Exception)
@@ -851,13 +913,22 @@ namespace MonoCore
             System.Threading.Thread.MemoryBarrier();
             //tell the C# thread that it can now process and since processing is false, we can then end the application.
             MainProcessor.ProcessResetEvent.Set();
-            if (E3Core.Server.NetMQServer.UIProcess != null)
-            {
-                E3Core.Server.NetMQServer.UIProcess.Kill();
-            }
+			E3Core.Server.NetMQServer.KillAllProcesses();
             NetMQConfig.Cleanup(false);
             System.Threading.Thread.Sleep(500);
-            GC.Collect();
+			//write out any writes that have been delayed
+			if (MQ.DelayedWrites.Count > 0)
+			{
+				while (MQ.DelayedWrites.Count > 0)
+				{
+					string message;
+					if (MQ.DelayedWrites.TryDequeue(out message))
+					{
+						Core.mq_Echo(message);
+					}
+				}
+			}
+			GC.Collect();
             ////NOTE , there are situations where the unload of the domain will lock up. I've done everything I can do to prevent this, but it 'can' and will happen. 
             ////I've written a script to reload constantly for 5-6 min before lockup, but again its a % chance. 
         }
@@ -939,8 +1010,18 @@ namespace MonoCore
                 Core.mq_Delay(CurrentDelay);
                 CurrentDelay = 0;
             }
-  
-
+			//write out any writes that have been delayed
+			if(MQ.DelayedWrites.Count>0)
+			{
+				while(MQ.DelayedWrites.Count>0)
+				{
+					string message;
+					if(MQ.DelayedWrites.TryDequeue(out message))
+					{
+						Core.mq_Echo(message);
+					}
+				}
+			}
         }
 
         //Comment these out if you are not using events so that C++ doesn't waste time sending the string to C#
@@ -970,7 +1051,48 @@ namespace MonoCore
             }
             EventProcessor.ProcessEvent(line);
         }
-        public static void OnSetSpawns(byte[] data, int size)
+
+        static System.Text.StringBuilder _queryBuilder = new StringBuilder(); 
+		public static string OnQuery(string line)
+		{
+			//mq_Echo("query recieved:" + line);
+			if (!IsProcessing)
+			{
+				return String.Empty;
+			}
+			if (!E3.IsInit)
+            {
+                return String.Empty;
+            }
+            _queryBuilder.Clear();
+            _queryBuilder.Append(line);
+            _queryBuilder.Replace('(', '[');
+			_queryBuilder.Replace(')', ']');
+            line = _queryBuilder.ToString();
+            string results = String.Empty;
+			//mq_Echo("query fixed:" + line);
+
+			try
+			{
+                //its important to disable the delay, as that can force control back to C++, whcn C++ is waiting on us to respond
+                //aka deadlock. do not allow that to happen, set global nodelay to prevent any sub calls calling delay.
+				MQ._noDelay = true;
+                _queryBuilder.Clear();
+                _queryBuilder.Append("${");
+                _queryBuilder.Append(line);
+                _queryBuilder.Append("}");
+                results = Casting.Ifs_Results(_queryBuilder.ToString());
+			}
+            finally
+            {
+                //put it back when done
+				MQ._noDelay = false;
+			}
+
+			//mq_Echo("final result:" + results);
+			return results;
+		}
+		public static void OnSetSpawns(byte[] data, int size)
         {
 
 
@@ -980,15 +1102,29 @@ namespace MonoCore
             Spawn s;
             if(Spawns.SpawnsByID.TryGetValue(ID, out s))
             {
-                //just update the value
-                s.Init(data, size);
-            }
+				//just update the value
+				try
+				{
+					s.Init(data, size);
+
+				}
+				catch (Exception) { };
+
+			}
             else
             {
                 var spawn = Spawn.Aquire();
-                spawn.Init(data, size);
-                Spawns._spawns.Add(spawn);
-            }
+				try
+				{
+					spawn.Init(data, size);
+					Spawns._spawns.Add(spawn);
+
+				}
+				catch(Exception)
+				{
+					spawn.Dispose();
+				}
+			}
 
             
             //copy the data out into the current array set. 
@@ -1026,7 +1162,9 @@ namespace MonoCore
         public extern static void mq_RemoveCommand(string command);
         [MethodImpl(MethodImplOptions.InternalCall)]
         public extern static void mq_GetSpawns();
-        [MethodImpl(MethodImplOptions.InternalCall)]
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		public extern static void mq_GetSpawns2();
+		[MethodImpl(MethodImplOptions.InternalCall)]
         public extern static bool mq_GetRunNextCommand();
         [MethodImpl(MethodImplOptions.InternalCall)]
         public extern static string mq_GetFocusedWindowName();
@@ -1126,7 +1264,11 @@ namespace MonoCore
         void Cmd(string query, bool delayed = false);
         void Cmd(string query,Int32 delay,bool delayed=false);
         void Write(string query, [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0);
-        void TraceStart(string methodName);
+		/// <summary>
+		/// This is used when on a different thread so its queued up on the main thread in MQ
+		/// </summary>
+		void WriteDelayed(string query, [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0);
+		void TraceStart(string methodName);
         void TraceEnd(string methodName);
         void Delay(Int32 value);
         Boolean Delay(Int32 maxTimeToWait, string Condition);
@@ -1148,6 +1290,8 @@ namespace MonoCore
         public static Int64 MaxMillisecondsToWork = 40;
         public static Int64 SinceLastDelay = 0;
         public static Int64 _totalQueryCounts;
+        public static bool _noDelay = false;
+		public static ConcurrentQueue<String> DelayedWrites = new ConcurrentQueue<string>();
         public T Query<T>(string query)
         {
             if (!Core.IsProcessing)
@@ -1158,7 +1302,6 @@ namespace MonoCore
             _totalQueryCounts++;
             Int64 elapsedTime = Core.StopWatch.ElapsedMilliseconds;
             Int64 differenceTime = Core.StopWatch.ElapsedMilliseconds - SinceLastDelay;
-
 
             if (MaxMillisecondsToWork < differenceTime)
             {
@@ -1311,14 +1454,26 @@ namespace MonoCore
 
         public void Write(string query, [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0)
         {
-              //write on current thread, it will be queued up by MQ. 
+            //write on current thread, it will be queued up by MQ. 
             //needed to deal with certain lock situations and just keeps things simple. 
-            Core.mq_Echo($"\a#336699[{MainProcessor.ApplicationName}]\a-w{System.DateTime.Now.ToString("HH:mm:ss")} \aw- {query}");
-            return;
-
+            if(E3Core.Processors.Setup._broadcastWrites)
+            {
+				E3.Bots.Broadcast(query);
+			}
+			Core.mq_Echo($"\a#336699[{MainProcessor.ApplicationName}]\a-w{System.DateTime.Now.ToString("HH:mm:ss")} \aw- {query}");
+			return;
         }
-
-        public void TraceStart(string methodName)
+		public void WriteDelayed(string query, [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0)
+		{
+			//delay the write until we are in the C# area and the MQ thread are haulted to prevent crashes
+			if (E3Core.Processors.Setup._broadcastWrites)
+			{
+				E3.Bots.Broadcast(query);
+			}
+			DelayedWrites.Enqueue($"\a#336699[{MainProcessor.ApplicationName}]\a-w{System.DateTime.Now.ToString("HH:mm:ss")} \aw- {query}");
+			return;
+		}
+		public void TraceStart(string methodName)
         {
             if (String.IsNullOrWhiteSpace(methodName))
             {
@@ -1336,6 +1491,8 @@ namespace MonoCore
         }
         public void Delay(Int32 value)
         {
+            if (_noDelay) return;
+
             if (!Core.IsProcessing)
             {
                 //we are terminating, kill this thread
@@ -1462,7 +1619,18 @@ namespace MonoCore
         {
             MQ = mqInstance;
         }
-        public void Write(string message, LogLevels logLevel = LogLevels.Default, string eventName = "Logging", [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0, Dictionary<String, String> headers = null)
+		public void WriteDelayed(string message, LogLevels logLevel = LogLevels.Default, string eventName = "Logging", [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0, Dictionary<String, String> headers = null)
+		{
+
+			if (logLevel == LogLevels.Default)
+			{
+				logLevel = DefaultLogLevel;
+			}
+
+			WriteStaticDelayed(message, logLevel, eventName, memberName, fileName, lineNumber, headers);
+
+		}
+		public void Write(string message, LogLevels logLevel = LogLevels.Default, string eventName = "Logging", [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0, Dictionary<String, String> headers = null)
         {
 
             if (logLevel == LogLevels.Default)
@@ -1473,8 +1641,30 @@ namespace MonoCore
             WriteStatic(message, logLevel, eventName, memberName, fileName, lineNumber, headers);
 
         }
+		public static void WriteStaticDelayed(string message, LogLevels logLevel = LogLevels.Info, string eventName = "Logging", [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0, Dictionary<String, String> headers = null)
+		{
+			if ((Int32)logLevel < (Int32)MinLogLevelTolog)
+			{
+				return;//log level is too low to currently log. 
+			}
+			string className = GetClassName(fileName);
 
-        public static void WriteStatic(string message, LogLevels logLevel = LogLevels.Info, string eventName = "Logging", [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0, Dictionary<String, String> headers = null)
+			if (logLevel == LogLevels.CriticalError)
+			{
+				eventName += "._CriticalError_";
+			}
+
+			if (logLevel == LogLevels.Debug)
+			{
+				MQ.WriteDelayed($"\ag{className}:\ao{memberName}\aw:({lineNumber}) {message}", "", "Logging");
+
+			}
+			else
+			{
+				MQ.WriteDelayed($"{message}");
+			}
+		}
+		public static void WriteStatic(string message, LogLevels logLevel = LogLevels.Info, string eventName = "Logging", [CallerMemberName] string memberName = "", [CallerFilePath] string fileName = "", [CallerLineNumber] int lineNumber = 0, Dictionary<String, String> headers = null)
         {
             if ((Int32)logLevel < (Int32)MinLogLevelTolog)
             {
@@ -1492,7 +1682,7 @@ namespace MonoCore
 
             if (logLevel == LogLevels.Debug)
             {
-                MQ.Write($"\ag{className}:\ao{memberName}\aw:({lineNumber}) {message}", "", "Logging");
+				MQ.Write($"\ag{className}:\ao{memberName}\aw:({lineNumber}) {message}", "", "Logging");
 
             }
             else
@@ -1555,24 +1745,32 @@ namespace MonoCore
             CriticalError = 90000,
             Default = 99999
         }
-        private static String GetClassName(string fileName)
+        public static String GetClassName(string fileName)
         {
             string className;
-            if (!_classLookup.ContainsKey(fileName))
-            {
-                if (!String.IsNullOrWhiteSpace(fileName))
-                {
-                    string[] tempArray = fileName.Split('\\');
-                    className = tempArray[tempArray.Length - 1];
-                    className = className.Replace(".cs", String.Empty).Replace(".vb", String.Empty);
-                    _classLookup.TryAdd(fileName, className);
+			try
+			{
+				if (!_classLookup.ContainsKey(fileName))
+				{
+					if (!String.IsNullOrWhiteSpace(fileName))
+					{
+						string[] tempArray = fileName.Split('\\');
+						className = tempArray[tempArray.Length - 1];
+						className = className.Replace(".cs", String.Empty).Replace(".vb", String.Empty);
+						_classLookup.TryAdd(fileName, className);
 
-                }
-                else
-                {
-                    _classLookup.TryAdd(fileName, "Unknown/ErrorGettingClass");
-                }
-            }
+					}
+					else
+					{
+						_classLookup.TryAdd(fileName, "Unknown/ErrorGettingClass");
+					}
+				}
+			}
+			catch(Exception)
+			{
+				_classLookup.TryAdd(fileName, "Unknown/ErrorGettingClass");
+			}
+           
             className = _classLookup[fileName];
             return className;
         }
@@ -1623,7 +1821,7 @@ namespace MonoCore
             {
                 if (CallBackDispose != null)
                 {
-                    CallBackDispose.Invoke(this); //this should null out the CallbackDispose so the normal dispose can then run.
+                    CallBackDispose.Invoke(this); 
                 }
 
                 ResetObject();
@@ -1867,11 +2065,20 @@ namespace MonoCore
                 spawn.isDirty = false;
             }
             //request new spawns!
-            Core.mq_GetSpawns();
+            if(Core._MQ2MonoVersion>0.23m)
+            {
+				Core.mq_GetSpawns2();
 
-            //spawns has new/updated data, get rid of the non dirty stuff.
-            //can use the other dictionaries to help
-            _spawnsByName.Clear();
+			}
+			else
+            {
+				Core.mq_GetSpawns();
+
+			}
+
+			//spawns has new/updated data, get rid of the non dirty stuff.
+			//can use the other dictionaries to help
+			_spawnsByName.Clear();
             SpawnsByID.Clear();
             foreach (var spawn in _spawns)
             {
@@ -1982,9 +2189,19 @@ namespace MonoCore
             cb += 4;
             CurrentEndurnace = BitConverter.ToInt32(data, cb);
             cb += 4;
-            CurrentHPs = BitConverter.ToInt32(data, cb);
-            cb += 4;
-            CurrentMana = BitConverter.ToInt32(data, cb);
+            if (Core._MQ2MonoVersion > 0.22m)
+            {
+				CurrentHPs = BitConverter.ToInt64(data, cb);
+				cb += 8;
+
+			}
+			else
+            {
+				CurrentHPs = BitConverter.ToInt32(data, cb);
+				cb += 4;
+
+			}
+			CurrentMana = BitConverter.ToInt32(data, cb);
             cb += 4;
             Dead = BitConverter.ToBoolean(data, cb);
             cb += 1;
@@ -2006,8 +2223,17 @@ namespace MonoCore
             cb += 4;
             GM = BitConverter.ToBoolean(data, cb);
             cb += 1;
-            GuildID = BitConverter.ToInt32(data, cb);
-            cb += 4;
+            if(Core._MQ2MonoVersion>0.23m)
+            {
+				GuildID = BitConverter.ToInt64(data, cb);
+				cb += 8;
+			}
+            else
+            {
+				GuildID = BitConverter.ToInt32(data, cb);
+				cb += 4;
+			}
+          
             Heading = BitConverter.ToSingle(data, cb);
             cb += 4;
             Height = BitConverter.ToSingle(data, cb);
@@ -2049,8 +2275,17 @@ namespace MonoCore
             cb += slength;
             Named = BitConverter.ToBoolean(data, cb);
             cb += 1;
-            PctHps = BitConverter.ToInt32(data, cb);
-            cb += 4;
+			if (Core._MQ2MonoVersion > 0.23m)
+			{
+				PctHps = BitConverter.ToInt64(data, cb);
+				cb += 8;
+			}
+			else
+			{
+				PctHps = BitConverter.ToInt32(data, cb);
+				cb += 4;
+			}
+			
             PctMana = BitConverter.ToInt32(data, cb);
             cb += 4;
             PetID = BitConverter.ToInt32(data, cb);
@@ -2147,7 +2382,7 @@ namespace MonoCore
         public Int32 PlayerState;
         public Int32 PetID;
         public Int32 PctMana;
-        public Int32 PctHps;
+        public Int64 PctHps;
         public bool Named;
         public string Name = String.Empty;
         public bool Moving;
@@ -2165,7 +2400,7 @@ namespace MonoCore
         public Int32 ID;
         public float Height;
         public float Heading;
-        public Int32 GuildID;
+        public Int64 GuildID;
         public bool GM;
         public Int32 GenderID;
         public String Gender
@@ -2181,7 +2416,7 @@ namespace MonoCore
         public string DisplayName = string.Empty;
         public bool Dead;
         public Int32 CurrentMana;
-        public Int32 CurrentHPs;
+        public Int64 CurrentHPs;
         public Int32 CurrentEndurnace;
         public Int32 ConColorID;
         public String ConColor

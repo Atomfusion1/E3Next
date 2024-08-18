@@ -17,11 +17,16 @@ namespace E3Core.Processors
         private static IMQ MQ = E3.MQ;
         private static ISpawns _spawns = E3.Spawns;
 
-        public static bool use_FULLBurns = false;
-        public static bool use_QUICKBurns = false;
-        public static bool use_EPICBurns = false;
-        public static bool use_LONGBurns = false;
-        public static bool use_Swarms = false;
+		[ExposedData("Burns", "UsingFullBurns")]
+		public static bool use_FULLBurns = false;
+		[ExposedData("Burns", "UsingQuickBurns")]
+		public static bool use_QUICKBurns = false;
+		[ExposedData("Burns", "UsingEpicBurns")]
+		public static bool use_EPICBurns = false;
+		[ExposedData("Burns", "UsingLongBurns")]
+		public static bool use_LONGBurns = false;
+		[ExposedData("Burns", "UsingSwarmBurns")]
+		public static bool use_Swarms = false;
         public static List<Data.Spell> _epicWeapon = new List<Data.Spell>();
         public static List<Data.Spell> _anguishBP = new List<Data.Spell>();
         public static List<Data.Spell> _swarmPets = new List<Spell>();
@@ -45,7 +50,7 @@ namespace E3Core.Processors
 
 
         [SubSystemInit]
-        public static void Init()
+        public static void Burns_Init()
         {
             RegisterEpicAndAnguishBP();
             RegisterSwarppets();
@@ -149,6 +154,7 @@ namespace E3Core.Processors
                 Int32 previousTarget = MQ.Query<Int32>("${Target.ID}");
                 foreach (var burn in burnList)
                 {
+                    if (MQ.Query<Int32>("${Me.CurrentHPs}") < 1) return; //can't burn if dead
                     //can't do gathering dusk if not in combat, skip it
                     if (burn.SpellName == "Gathering Dusk" && !Basics.InGameCombat()) continue;
                     if (burn.TargetType == "Pet" && MQ.Query<int>("${Me.Pet.ID}") < 1) continue;
@@ -176,7 +182,7 @@ namespace E3Core.Processors
 
                     if (Casting.CheckReady(burn))
                     {
-                        if (burn.CastType == Data.CastType.Disc)
+                        if (burn.CastType == Data.CastingType.Disc)
                         {
                             if (burn.TargetType == "Self")
                             {
@@ -199,9 +205,24 @@ namespace E3Core.Processors
                             isMyPet = (previousTarget == MQ.Query<Int32>("${Me.Pet.ID}"));
 
                         }
-                        var chatOutput = $"/g {burnType}: {burn.CastName}";
+                        var chatOutput = $"{burnType}: {burn.CastName}";
                         //so you don't target other groups or your pet for burns if your target happens to be on them.
-                        if (((isMyPet) || (targetPC && !isGroupMember)) && (burn.TargetType == "Group v1" || burn.TargetType == "Group v2"))
+						if(!String.IsNullOrWhiteSpace(burn.CastTarget) && _spawns.TryByName(burn.CastTarget, out var spelltarget))
+						{
+
+							Casting.Cast(spelltarget.ID, burn);
+							if (previousTarget > 0)
+							{
+								Int32 currentTarget = MQ.Query<Int32>("${Target.ID}");
+								if (previousTarget != currentTarget)
+								{
+									Casting.TrueTarget(previousTarget);
+								}
+							}
+							E3.Bots.Broadcast(chatOutput);
+
+						}
+                        else if (((isMyPet) || (targetPC && !isGroupMember)) && (burn.TargetType == "Group v1" || burn.TargetType == "Group v2"))
                         {
                             Casting.Cast(E3.CurrentId, burn);
                             if (previousTarget > 0)
@@ -212,12 +233,12 @@ namespace E3Core.Processors
                                     Casting.TrueTarget(previousTarget);
                                 }
                             }
-                            MQ.Cmd(chatOutput);
+                            E3.Bots.Broadcast(chatOutput);
                         }
                         else
                         {
                             Casting.Cast(0, burn);
-                            MQ.Cmd(chatOutput);
+                            E3.Bots.Broadcast(chatOutput);
                         }
                     }
                 }

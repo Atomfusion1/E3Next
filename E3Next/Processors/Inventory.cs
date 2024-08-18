@@ -25,7 +25,7 @@ namespace E3Core.Processors
         private static long _nextTradeCheckInterval = 1000;
 
         [SubSystemInit]
-        public static void Init()
+        public static void Inventory_Init()
         {
             RegisterEvents();
         }
@@ -131,8 +131,34 @@ namespace E3Core.Processors
                             }
                         }
                     }
+					else
+					{
+						//its a single item
+
+						String bagItem = MQ.Query<String>($"${{Me.Inventory[pack{i}]}}");
+						if (bagItem.IndexOf(itemName, 0, StringComparison.OrdinalIgnoreCase) > -1)
+						{
+							report.Add($"\ag[Pack] ${{Me.Inventory[pack{i}].ItemLink[CLICKABLE]}} - \awbag({i})");
+						}
+						Int32 augCount = MQ.Query<Int32>($"${{Me.Inventory[pack{i}].Augs}}");
+						if (augCount > 0)
+						{
+							for (int a = 1; a <= 6; a++)
+							{
+								string augname = MQ.Query<string>($"${{Me.Inventory[pack{i}].AugSlot[{a}].Name}}");
+
+								if (augname.IndexOf(itemName, 0, StringComparison.OrdinalIgnoreCase) > -1)
+								{
+									totalItems += 1;
+									report.Add($"\ag[Pack] ${{Me.Inventory[pack{i}].ItemLink[CLICKABLE]}} - ${{Me.Inventory[pack{i}].AugSlot[{a}].Item.ItemLink[CLICKABLE]}} \aw(aug-slot[{a}]) \awbag({i})");
+								}
+							}
+						}
+
+					}
 
                 }
+				
             }
 
             for (int i = 1; i <= 26; i++)
@@ -361,26 +387,53 @@ namespace E3Core.Processors
             EventProcessor.RegisterCommand("/fds", (x) =>
             {
 
-                if (e3util.FilterMe(x)) return;
-                
-                List<string> validReportChannels = new List<string>() { "/g", "/gu", "/say", "/rsay", "/gsay", "/rs", "/bc" };
+                List<string> validReportChannels = new List<string>() { "/g", "/gu", "/say", "/rsay", "/gsay", "/rs", "/e3bc" };
 
                 string channel = "/gsay";
-                if (x.args.Count > 1 && validReportChannels.Contains(x.args[1], StringComparer.OrdinalIgnoreCase))
+                if(e3util.IsEQLive())
                 {
-
-                    channel = x.args[1];
+                    channel = "/e3bc";
                 }
+                else
+                {
+					if (x.args.Count > 1 && validReportChannels.Contains(x.args[1], StringComparer.OrdinalIgnoreCase))
+					{
+
+						channel = x.args[1];
+					}
+				}
+              
                 if (x.args.Count > 0)
                 {
                     string slot = x.args[0];
-                    if (FDSPrint(slot,channel))
+                    if(slot=="all")
                     {
-                        if (!x.args.Contains("group"))
+                        foreach (string tslot in _invSlots)
                         {
-                            E3.Bots.BroadcastCommandToGroup($"/fds {slot} {channel} group",x);
-                        }
+							if (FDSPrint(tslot, channel))
+							{
+								//if (!x.args.Contains("group"))
+								//{
+								//	//E3.Bots.BroadcastCommandToGroup($"/fds {slot} {channel} group", x);
+								//}
+							}
+						}
+
                     }
+                    else
+                    {
+						if (!x.args.Contains("group"))
+						{
+							if (_fdsSlots.Contains(slot))
+							{
+								E3.Bots.BroadcastCommandToGroup($"/fds {slot} {channel} group", x);
+							}
+						}
+						if (e3util.FilterMe(x)) return;
+						FDSPrint(slot, channel);
+						
+					}
+                   
                 }
 
             });
@@ -418,8 +471,8 @@ namespace E3Core.Processors
                 }
 
             });
-            EventProcessor.RegisterCommand("/getfrombank", (x) => GetFrom("Bank", x.args));
-            EventProcessor.RegisterCommand("/getfrominv", (x) => GetFrom("Inventory", x.args));
+            EventProcessor.RegisterCommand("/e3getfrombank", (x) => GetFrom("Bank", x.args));
+            EventProcessor.RegisterCommand("/e3getfrominv", (x) => GetFrom("Inventory", x.args));
             EventProcessor.RegisterCommand("/upgrade", (x) => Upgrade(x.args));
             //restock generic reusable items from vendors
             

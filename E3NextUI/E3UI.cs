@@ -30,7 +30,7 @@ namespace E3NextUI
 		public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
 		[DllImportAttribute("user32.dll")]
 		public static extern bool ReleaseCapture();
-		public static string Version = "v1.2";
+		public static string Version = "v1.42.2";
         public static System.Diagnostics.Stopwatch _stopWatch = new System.Diagnostics.Stopwatch();
         public static volatile bool ShouldProcess = true;
 
@@ -49,7 +49,9 @@ namespace E3NextUI
         public static TextBoxInfo MeleeConsole;
         public static TextBoxInfo SpellConsole;
         public static string PlayerName;
-        public static Int32 _parentProcess;
+        public static string ServerName = string.Empty;
+	
+	    public static Int32 _parentProcess;
         public static object _objectLock = new object();
         public static GeneralSettings _genSettings;
         public static bool _buttonMode = false;
@@ -63,6 +65,7 @@ namespace E3NextUI
         public static String _playerSP;
         private globalKeyboardHook _globalKeyboard;
         public static string _currentWindowName = "NULL";
+        public static object _currentWindowLock = new object();
         private FormBorderStyle _startingStyle;
 		//resizing stuff for when in buttonmode
 		//https://stackoverflow.com/questions/2575216/how-to-move-and-resize-a-form-without-a-border
@@ -122,7 +125,8 @@ namespace E3NextUI
                     lock (_tloClient)
                     {
                         PlayerName = _tloClient.RequestData("${Me.CleanName}");
-                        this.Text = $"E3UI ({PlayerName}) ({Version})";
+                        ServerName = _tloClient.RequestData("${MacroQuest.Server}");
+                        this.Text = $"E3UI ({PlayerName})({ServerName})({Version})";
                         labelPlayerName.Text = PlayerName;
                         configFolder = _tloClient.RequestData("${MacroQuest.Path[config]}");
                     }
@@ -141,7 +145,7 @@ namespace E3NextUI
 
 			}
 
-            _genSettings = new GeneralSettings(configFolder, PlayerName);
+            _genSettings = new GeneralSettings(configFolder, PlayerName,ServerName);
             _genSettings.LoadData();
 
 
@@ -289,6 +293,7 @@ namespace E3NextUI
                         edit.textBoxName.Text = b.Text;
                         edit.textBoxCommands.Text = String.Join("\r\n",db.Commands);
 						edit.checkBoxHotkeyAlt.Checked = db.HotKeyAlt;
+                        edit.checkBoxHotkeyShift.Checked = db.HotKeyShift;
 						edit.checkBoxHotkeyCtrl.Checked = db.HotKeyCtrl;
                         edit.checkBoxHotkeyEat.Checked = db.HotKeyEat;
 
@@ -327,23 +332,36 @@ namespace E3NextUI
 
 		private void globalKeyboard_KeyDown(object sender, KeyEventArgs e)
 		{
-			//one of the keys we are looking for!
-			
-            if (_currentWindowName.EndsWith("Input", StringComparison.OrdinalIgnoreCase))
-			{
-				//they are typing in game, do not capture events.
-				return;
-			}
-			if (_currentWindowName.Equals("CW_ChatInput",StringComparison.OrdinalIgnoreCase))
+            lock(_currentWindowLock)
             {
-                //they are typing in game, do not capture events.
-                return;
-            }
-			if (_currentWindowName.Equals("QTYW_SliderInput", StringComparison.OrdinalIgnoreCase))
-			{
-				//they are typing in game, do not capture events.
-				return;
+				//one of the keys we are looking for!
+				if (_currentWindowName.Equals("IMGUI", StringComparison.OrdinalIgnoreCase))
+				{
+					//they are typing in game, do not capture events.
+					return;
+				}
+				if (_currentWindowName.EndsWith("SearchTextEdit", StringComparison.OrdinalIgnoreCase))
+				{
+					//they are typing in game, do not capture events.
+					return;
+				}
+				if (_currentWindowName.EndsWith("Input", StringComparison.OrdinalIgnoreCase))
+				{
+					//they are typing in game, do not capture events.
+					return;
+				}
+				if (_currentWindowName.Equals("CW_ChatInput", StringComparison.OrdinalIgnoreCase))
+				{
+					//they are typing in game, do not capture events.
+					return;
+				}
+				if (_currentWindowName.Equals("QTYW_SliderInput", StringComparison.OrdinalIgnoreCase))
+				{
+					//they are typing in game, do not capture events.
+					return;
+				}
 			}
+			
 			foreach (var pair in _genSettings.DynamicButtons)
 			{
 
@@ -353,7 +371,25 @@ namespace E3NextUI
 
 				if (key==e.KeyCode)
 				{ 
-                    if(pair.Value.HotKeyAlt && e.Modifiers!= Keys.Alt)
+                    if(e.Modifiers==Keys.Alt && !pair.Value.HotKeyAlt)
+                    {
+                        continue;
+                    }
+					if (e.Modifiers == Keys.Control && !pair.Value.HotKeyCtrl)
+					{
+						continue;
+					}
+
+					if (e.Modifiers == Keys.Shift && !pair.Value.HotKeyShift)
+					{
+						continue;
+					}
+					if (e.Modifiers == Keys.Shift && !pair.Value.HotKeyShift)
+					{
+						continue;
+					}
+
+					if (pair.Value.HotKeyAlt && e.Modifiers!= Keys.Alt)
                     {
                         continue;
                     }
@@ -426,6 +462,7 @@ namespace E3NextUI
 			_genSettings.DynamicButtons[b.Name] = tdb;
 
 			tdb.HotKeyAlt = edit.checkBoxHotkeyAlt.Checked;
+            tdb.HotKeyShift = edit.checkBoxHotkeyShift.Checked;
 			tdb.HotKeyCtrl = edit.checkBoxHotkeyCtrl.Checked;
 			tdb.HotKeyEat = edit.checkBoxHotkeyEat.Checked;
 			string text = (string)edit.comboBoxKeyValues.SelectedItem;
@@ -580,10 +617,18 @@ namespace E3NextUI
             while (ShouldProcess)
             {
              
-                if(this.IsHandleCreated)
+                try
                 {
-                    this.Invoke(new ProcesssBaseParseDelegate(ProcesssBaseParse), null);
+					if (this.IsHandleCreated)
+					{
+						this.Invoke(new ProcesssBaseParseDelegate(ProcesssBaseParse), null);
 
+					}
+
+				}
+				catch (Exception ex) 
+                {
+                    ; Debug.WriteLine(ex.Message);                
                 }
                 System.Threading.Thread.Sleep(500);
             }
@@ -615,16 +660,23 @@ namespace E3NextUI
                 {
                     labelPetNameValue.Text = LineParser.PetName;
                 }
-                Int64 yourDamageTotal = LineParser.YourDamage.Sum();
+				if (!String.IsNullOrWhiteSpace(LineParser.MercName))
+				{
+					labelMercNameValue.Text = LineParser.MercName;
+				}
+				Int64 yourDamageTotal = LineParser.YourDamage.Sum();
                 labelYourDamageValue.Text = yourDamageTotal.ToString("N0");
 
                 Int64 petDamageTotal = LineParser.YourPetDamage.Sum();
                 labelPetDamageValue.Text = petDamageTotal.ToString("N0");
 
-                Int64 dsDamage = LineParser.YourDamageShieldDamage.Sum();
+				Int64 mercDamageTotal = LineParser.YourMercDamage.Sum();
+				labelMercDamageValue.Text = mercDamageTotal.ToString("N0");
+
+				Int64 dsDamage = LineParser.YourDamageShieldDamage.Sum();
                 labelYourDamageShieldValue.Text = dsDamage.ToString("N0");
 
-                Int64 totalDamage = yourDamageTotal + petDamageTotal + dsDamage;
+                Int64 totalDamage = yourDamageTotal + petDamageTotal + dsDamage + mercDamageTotal;
                 labelTotalDamageValue.Text = totalDamage.ToString("N0");
 
                 Int64 damageToyou = LineParser.DamageToYou.Sum();
@@ -663,7 +715,18 @@ namespace E3NextUI
                         endTime = LineParser.YourPetDamageTime[LineParser.YourPetDamageTime.Count - 1];
                     }
                 }
-                if (LineParser.YourDamageShieldDamage.Count > 0)
+				if (LineParser.YourMercDamage.Count > 0)
+				{
+					if (startTime > LineParser.YourMercDamage[0] || startTime == 0)
+					{
+						startTime = LineParser.YourMercDamageTime[0];
+					}
+					if (endTime < LineParser.YourMercDamageTime[LineParser.YourMercDamageTime.Count - 1])
+					{
+						endTime = LineParser.YourMercDamageTime[LineParser.YourMercDamageTime.Count - 1];
+					}
+				}
+				if (LineParser.YourDamageShieldDamage.Count > 0)
                 {
                     if (startTime > LineParser.YourDamageShieldDamageTime[0] || startTime == 0)
                     {
@@ -682,14 +745,16 @@ namespace E3NextUI
                 Int64 totalDPS = totalDamage / totalTime;
                 Int64 yourDPS = yourDamageTotal / totalTime;
                 Int64 petDPS = petDamageTotal / totalTime;
+                Int64 mercDPS = mercDamageTotal / totalTime;
                 Int64 dsDPS = dsDamage / totalTime;
 
                 labelTotalDamageDPSValue.Text = totalDPS.ToString("N0") + " dps";
                 labelYourDamageDPSValue.Text = yourDPS.ToString("N0") + " dps";
                 labelPetDamageDPSValue.Text = petDPS.ToString("N0") + " dps";
                 labelDamageShieldDPSValue.Text = dsDPS.ToString("N0") + " dps";
+                labelMercDamageDPSValue.Text = mercDPS.ToString("N0") + " dps";
 
-            }
+			}
             
         }
         private delegate void SetPlayerDataDelegate(string name);
@@ -748,8 +813,11 @@ namespace E3NextUI
         }
 		public void SetCurrentWindow(string value)
 		{
-			if (value == labelCastingValue.Text) return;
-            _currentWindowName = value;
+			if (value == _currentWindowName) return;
+            lock(_currentWindowLock)
+            {
+				_currentWindowName = value;
+			}
 		}
 		#endregion
 
