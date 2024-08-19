@@ -277,7 +277,7 @@ namespace E3Core.Processors
                                     {
                                         MQ.Cmd("/doability Taunt");
 
-                                        E3.Bots.Broadcast($"Taunting {s.CleanName}: {tt.ClassShortName} - {tt.CleanName} has agro and not a tank");
+                                        //Fuck Off E3.Bots.Broadcast($"Taunting {s.CleanName}: {tt.ClassShortName} - {tt.CleanName} has agro and not a tank");
 
                                     }
                                    
@@ -593,13 +593,13 @@ namespace E3Core.Processors
                         //as well as ranged has face commands but casters shouldn't care
                         if(!((E3.CurrentClass & Class.Caster) == E3.CurrentClass || (E3.CurrentClass & Class.Priest) == E3.CurrentClass)|| (E3.CharacterSettings.Assist_Type.Equals("AutoAttack", StringComparison.OrdinalIgnoreCase)))
                         {
-							MQ.Cmd($"/face id {AssistTargetID}", 500);
+							MQ.Cmd($"/squelch /face id {AssistTargetID}", 500);
 						}
 
 					}
                     else
                     {
-						MQ.Cmd($"/face fast id {AssistTargetID}");
+						MQ.Cmd($"/squelch /face fast id {AssistTargetID}");
 					}
                   
                 }

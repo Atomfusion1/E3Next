@@ -508,7 +508,7 @@ namespace E3Core.Classes
             if (Casting.CheckReady(songToPlay) && Casting.CheckMana(songToPlay))
             {
                
-                MQ.Write($"\atTwist \ag{songToPlay.SpellName}");
+                //Fuck Off MQ.Write($"\atTwist \ag{songToPlay.SpellName}");
                
                 _currentSongPlaying = songToPlay;
                 Casting.Sing(0, songToPlay);

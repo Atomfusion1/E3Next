@@ -636,11 +636,11 @@ namespace E3Core.Processors
                         Int32 currentZone = MQ.Query<Int32>("${Zone.ID}");
                         if(e3util.IsEQLive())
                         {
-							MQ.Cmd($"/face heading {heading * -1}",500);
+							MQ.Cmd($"/squelch /face heading {heading * -1}",500);
 						}
                         else
                         {
-							MQ.Cmd($"/face fast heading {heading * -1}");
+							MQ.Cmd($"/squelch /face fast heading {heading * -1}");
 						}
                        
                         MQ.Delay(600);
@@ -667,11 +667,11 @@ namespace E3Core.Processors
                     MQ.Delay(1000);
                     if(e3util.IsEQLive())
                     {
-						MQ.Cmd($"/face heading {heading * -1}",500);
+						MQ.Cmd($"/squelch /face heading {heading * -1}",500);
                  	}
                     else
                     {
-						MQ.Cmd($"/face fast heading {heading * -1}");
+						MQ.Cmd($"/squelch /face fast heading {heading * -1}");
 					}
                     
                     MQ.Cmd("/nomodkey /keypress forward hold");

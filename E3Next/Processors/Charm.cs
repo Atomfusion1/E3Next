@@ -144,7 +144,7 @@ namespace E3Core.Processors
 			}
 
 			MQ.Cmd("/dropinvis");
-			MQ.Cmd($"/face fast id {_charmTargetId}");
+			MQ.Cmd($"/squelch /face fast id {_charmTargetId}");
 			MQ.Cmd("/beep");
 			if (E3.CharacterSettings.Charm_PeelTank != String.Empty)
 			{

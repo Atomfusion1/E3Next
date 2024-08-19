@@ -88,11 +88,11 @@ namespace E3Core.Processors
                             {
                                 if(e3util.IsEQLive())
                                 {
-									MQ.Cmd("/face",500);
+									MQ.Cmd("/squelch /face", 500);
 								}
                                 else
                                 {
-									MQ.Cmd("/face fast");
+									MQ.Cmd("/squelch /face fast");
 								}
                                
                             }
