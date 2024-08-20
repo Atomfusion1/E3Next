@@ -216,11 +216,14 @@ namespace E3Core.Processors
         }
         private static void ReturnToCamp(string returnToString)
         {
-            if (E3.MQ.Query<double>($"${{Spawn[{returnToString} pc].Distance}}") < 30) return;
+            while (E3.MQ.Query<double>($"${{Spawn[{returnToString} pc].Distance}}") > 30) {
+                if (MQ.Query<double>("${Me.XTarget[1].Distance}") < 60) { 
+                    E3.MQ.Cmd("/squelch /nav id " + E3.MQ.Query<Int32>($"${{Spawn[{returnToString}].ID}}").ToString() + " dist=25 log=off");
+                    E3.MQ.Delay(5000, "${Me.XTarget[1].Distance} > 110");
+                    E3.MQ.Cmd("/squelch /nav stop log=off");
+                }
+            }
             E3.MQ.Cmd("/squelch /nav stop log=off");
-            E3.MQ.Cmd("/squelch /nav id " + E3.MQ.Query<Int32>($"${{Spawn[{returnToString}].ID}}").ToString() + " dist=25 log=off");
-            E3.MQ.Delay(30000, $"${{Spawn[{returnToString} pc].Distance}} < 30");
-            E3.MQ.Delay(100);
             E3.MQ.Cmd("/squelch /face fast nolook");
             E3.MQ.Cmd("/squelch /nav stop log=off");
         }

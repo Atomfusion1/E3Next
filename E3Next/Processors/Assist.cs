@@ -567,7 +567,7 @@ namespace E3Core.Processors
                 AssistTargetID = mobID;
                 if (MQ.Query<Int32>("${Target.ID}") != AssistTargetID)
                 {
-                    MQ.Write("AssistOn Fix TargetID:" + AssistTargetID);
+                    //FUCK OFF MQ.Write("AssistOn Fix TargetID:" + AssistTargetID);
                     if (!Casting.TrueTarget(AssistTargetID))
                     {
                         //could not target
