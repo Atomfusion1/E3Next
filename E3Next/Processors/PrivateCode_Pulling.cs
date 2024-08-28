@@ -10,7 +10,7 @@ namespace E3Core.Processors
 {
     public static class SuperMode
     {
-        private static IMQ MQ = E3.MQ;
+        private static readonly IMQ MQ = E3.MQ;
         static ElapsedTimer PullingTimer =  new ElapsedTimer();
         static ElapsedTimer ChatTimer = new ElapsedTimer();
         static ElapsedTimer myTimer = new ElapsedTimer();
@@ -216,10 +216,13 @@ namespace E3Core.Processors
         }
         private static void ReturnToCamp(string returnToString)
         {
+
+            // Updated to not run so far from mob to help pathing
+            // Updated if 4 or more mobs to just stand and die as group will die 
             while (E3.MQ.Query<double>($"${{Spawn[{returnToString} pc].Distance}}") > 30) {
-                if (MQ.Query<double>("${Me.XTarget[1].Distance}") < 60) { 
+                if (MQ.Query<double>("${Me.XTarget[1].Distance}") < 80 && MQ.Query<int>($"${{Me.XTarget[4].ID}}") == 0) { 
                     E3.MQ.Cmd("/squelch /nav id " + E3.MQ.Query<Int32>($"${{Spawn[{returnToString}].ID}}").ToString() + " dist=25 log=off");
-                    E3.MQ.Delay(5000, "${Me.XTarget[1].Distance} > 110");
+                    E3.MQ.Delay(5000, "${Me.XTarget[1].Distance} > 150");
                     E3.MQ.Cmd("/squelch /nav stop log=off");
                 }
             }

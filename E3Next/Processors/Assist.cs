@@ -208,11 +208,11 @@ namespace E3Core.Processors
                         {
                             if(e3util.IsEQLive())
                             {
-								MQ.Cmd($"/squelch fast id {AssistTargetID}",500);
+								MQ.Cmd($"/squelch fast id {AssistTargetID} nolook",500);
 							}
                             else
                             {
-								MQ.Cmd($"/squelch /face fast id {AssistTargetID}");
+								MQ.Cmd($"/squelch /face fast id {AssistTargetID} nolook");
 							}
                            
                             if (MQ.Query<Decimal>("${Target.Distance}") > 200)
@@ -593,13 +593,13 @@ namespace E3Core.Processors
                         //as well as ranged has face commands but casters shouldn't care
                         if(!((E3.CurrentClass & Class.Caster) == E3.CurrentClass || (E3.CurrentClass & Class.Priest) == E3.CurrentClass)|| (E3.CharacterSettings.Assist_Type.Equals("AutoAttack", StringComparison.OrdinalIgnoreCase)))
                         {
-							MQ.Cmd($"/squelch /face id {AssistTargetID}", 500);
+							MQ.Cmd($"/squelch /face id {AssistTargetID} nolook", 500);
 						}
 
 					}
                     else
                     {
-						MQ.Cmd($"/squelch /face fast id {AssistTargetID}");
+						MQ.Cmd($"/squelch /face fast id {AssistTargetID} nolook");
 					}
                   
                 }
@@ -1050,12 +1050,12 @@ namespace E3Core.Processors
 
 						if (e3util.IsEQLive())
 						{
-							MQ.Cmd($"/squelch /face id {AssistTargetID}",500);
+							MQ.Cmd($"/squelch /face id {AssistTargetID} nolook",500);
 
 						}
 						else
 						{
-							MQ.Cmd($"/squelch /face fast id {AssistTargetID}");
+							MQ.Cmd($"/squelch /face fast id {AssistTargetID} nolook");
 						}
 						
 
